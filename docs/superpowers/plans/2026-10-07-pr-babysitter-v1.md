@@ -13,6 +13,15 @@
 `docs/superpowers/specs/2026-10-06-pr-babysitter-design.md` (v3), then pilot
 it in dry-run mode.
 
+**Progress (2026-10-07):**
+- **State:** Task 0 is done; see `2026-10-07-task0-findings.md`. The spec and
+  this plan are on branch `wip/design-spec`, in PR #1 of
+  `michellepellon/pr-babysitter`.
+- **Next:** Task 1, in a fresh session.
+- **Compactions:** the session that ran Task 0 was compacted at least once.
+- **Open:** narrowing the federation rule to `workspace:inference` (see
+  "Before Task 0") must happen before the pilot reaches work repos.
+
 **Architecture:**
 - Three jobs (plan, work, apply) in one reusable GitHub Actions workflow.
 - One Go binary with four subcommands: `plan`, `prove`, `apply`, `gateway`.
