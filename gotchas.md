@@ -49,7 +49,7 @@ pr-babysitter serves a team. It runs on GitHub Actions in each pilot repo, with 
 - Never interpolate a `${{ }}` holding PR, branch, comment, or agent data into a `run:` script; pass it through `env:`. Branch names may contain `$(...)`. Pin every action and reusable workflow by commit SHA, and set `cache-mode: none`.
 - Get the model credential from Anthropic Workload Identity Federation. Any writer can read a repo's secrets, so don't store keys. Repos created after 2026-07-15 get an immutable-ID subject, `repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:babysit`. A rule's `subject_prefix` matches exactly unless it ends in `*`. Claim names must match GitHub's exactly: a rule with `refs` instead of `ref` failed as `match_claim_absent`. Use scope `workspace:inference`; the Console offers only `workspace:developer`, so narrowing takes the Admin API and an `org:admin` login.
 - Each GitHub OIDC token can be exchanged with Anthropic only once (`jti`), so every refresh fetches a new one. Every denial is an opaque `401 Authentication failed`; the Console's Workload identity History tab shows the reason.
-- The model gateway must reject `mcp_servers` and server tools. Otherwise Anthropic's servers can carry repo code to an attacker's URL.
+- The model gateway must allowlist what it forwards, and fail closed. The agent can call the gateway directly, and `mcp_servers`, `container`, server tools, and images or PDFs given by URL (even inside a `tool_result`) all make Anthropic's servers reach the network, which can carry repo code to an attacker's URL.
 - Push with `--force-with-lease=<ref>:<round head>`. A plain push succeeds after someone resets the branch, and restores the commits they dropped.
 
 ## Platform facts from Task 0 (2026-10-07)

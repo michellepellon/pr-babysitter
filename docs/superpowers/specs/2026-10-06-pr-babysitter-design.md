@@ -195,9 +195,21 @@ The gateway is a small reverse proxy on 127.0.0.1. It:
   Anthropic accepts each one only once;
 - forwards only `POST /v1/messages` and `/v1/messages/count_tokens`, matching
   the URL path alone, since Claude Code adds `?beta=true`;
-- rejects any request body that contains `mcp_servers` or `container`, or a tool
-  whose `type` marks it as a server tool. Otherwise Anthropic's own servers
-  could fetch an attacker's URL with our code in it.
+- checks each request body against allowlists and rejects anything else. The
+  agent can send the gateway any request it likes, and some Messages features
+  make Anthropic's own servers fetch a URL, which could carry our code to an
+  attacker. So the gateway allows only:
+  - the top-level fields Claude Code sent in Task 0: `max_tokens`, `messages`,
+    `metadata`, `model`, `output_config`, `stream`, `system`, `thinking`, and
+    `tools`. That keeps out `mcp_servers` and `container`.
+  - tools whose `type` is empty or `custom`, which keeps out server tools such
+    as web fetch;
+  - content `source` objects, anywhere in the body, whose `type` is `base64` or
+    `text`. That keeps out images and PDFs given by URL, including ones nested
+    in tool results.
+
+  A Claude Code upgrade that adds a field fails its rounds closed until the
+  allowlist gains the field, with evidence from a run like Task 0's;
 - replaces the agent's auth headers with its own;
 - stops after 400 requests per round.
 
@@ -253,7 +265,8 @@ changes. The comment has three parts:
 Guarantees:
 
 - The agent never holds a GitHub token or a model credential. While it runs, it
-  can reach only the gateway.
+  can reach only the gateway, and the gateway forwards no request that makes
+  Anthropic's servers fetch a URL or run code.
 - Nothing the agent writes runs with CI's secrets, or reaches the default
   branch, until a person approves it. No job is given `actions: write`, so
   pr-babysitter can never approve its own CI runs. A person's token can,

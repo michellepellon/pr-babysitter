@@ -266,8 +266,12 @@ Budget: 130 lines.
   - It allows only `POST /v1/messages` and `POST /v1/messages/count_tokens`,
     with or without a query string (Claude Code sends `?beta=true`). Any other
     method or path gets a 403.
-  - It rejects any body containing `mcp_servers` or `container`, and any tool
-    whose `type` isn't empty or `custom`.
+  - It rejects any top-level field outside the spec's allowlist, including
+    `mcp_servers` and `container`, and names the field in its 403.
+  - It rejects any tool whose `type` isn't empty or `custom`.
+  - It rejects any `source` object whose `type` isn't `base64` or `text`,
+    wherever it sits: an image given by URL in a user message, and one nested
+    in a `tool_result`.
   - It removes incoming `x-api-key` and `authorization` headers and sets its
     own bearer token.
   - A request shaped like Claude Code's in Task 0 passes: the body fields and
@@ -285,7 +289,7 @@ Budget: 130 lines.
     token.
 - [ ] Implement with `httputil.ReverseProxy`, listening on 127.0.0.1 only.
 
-Budget: 110 lines.
+Budget: 125 lines, including about 15 for the walk over `source` objects.
 
 ## Task 7: GitHub calls and `plan` (`github.go`)
 
