@@ -277,7 +277,7 @@ Budget: 130 lines.
 
 ## Task 6: Gateway (`gateway.go`)
 
-- [ ] Unit tests for the request filter:
+- [x] Unit tests for the request filter:
   - It allows only `POST /v1/messages` and `POST /v1/messages/count_tokens`,
     with or without a query string (Claude Code sends `?beta=true`). Any other
     method or path gets a 403.
@@ -292,7 +292,7 @@ Budget: 130 lines.
   - A request shaped like Claude Code's in Task 0 passes: the body fields and
     betas in `testdata/task0/q67-runner-37673094894.txt`.
   - The 401st request in a round is refused.
-- [ ] Integration tests, with `httptest` servers standing in for GitHub's OIDC
+- [x] Integration tests, with `httptest` servers standing in for GitHub's OIDC
   endpoint and for Anthropic's token and messages endpoints:
   - The first request triggers the token exchange, using the request fields
     from the WIF doc.
@@ -302,7 +302,7 @@ Budget: 130 lines.
   - Streamed responses pass through event by event.
   - A failed exchange returns 502 to the agent, and the log never contains a
     token.
-- [ ] Implement with `httputil.ReverseProxy`, listening on 127.0.0.1 only.
+- [x] Implement with `httputil.ReverseProxy`, listening on 127.0.0.1 only.
 
 Budget: 125 lines, including about 15 for the walk over `source` objects.
 
