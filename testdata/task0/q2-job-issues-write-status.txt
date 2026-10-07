@@ -1,0 +1,2 @@
+Q2_POST_HTTP_STATUS=403
+Q2_POST_HEADER=x-accepted-github-permissions: issues=write; pull_requests=write

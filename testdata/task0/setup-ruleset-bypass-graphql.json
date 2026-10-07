@@ -1,0 +1,1 @@
+{"data":{"repository":{"rulesets":{"nodes":[{"databaseId":24664123,"name":"main-protection","enforcement":"ACTIVE","bypassActors":{"nodes":[{"bypassMode":"ALWAYS","repositoryRoleName":"admin","repositoryRoleDatabaseId":5,"organizationAdmin":false,"deployKey":false,"actor":null}]}}]}}}}

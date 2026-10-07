@@ -1,0 +1,2 @@
+Q1_HTTP_STATUS=200
+Q1_HEADER=x-accepted-github-permissions: metadata=read

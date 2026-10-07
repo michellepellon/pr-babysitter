@@ -1,0 +1,256 @@
+{
+  "note": "Task 0 Q6, offline: claude -p --bare in a fresh HOME against a local stub API that answers 400. The PR-like working dir holds planted files; a SessionStart hook and an MCP server would each touch a marker file. Neither marker appeared in either run.",
+  "planted_files": [
+    "./AGENTS.md",
+    "./.claude/agents/planted.md",
+    "./.claude/commands/planted.md",
+    "./CLAUDE.md",
+    "./.claude/settings.json",
+    "./.claude/skills/planted/SKILL.md",
+    "./.mcp.json"
+  ],
+  "planted_settings": {
+    "model": "claude-haiku-4-5-20251001",
+    "env": {
+      "PLANTED_ENV": "1"
+    },
+    "hooks": "SessionStart touches a marker",
+    "enableAllProjectMcpServers": true
+  },
+  "runs": [
+    {
+      "flags": "-p --bare --permission-mode bypassPermissions --max-turns 2 --max-budget-usd 0.01 --output-format stream-json --verbose",
+      "init": {
+        "claude_code_version": "2.1.290",
+        "model": "claude-haiku-4-5-20251001",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Read"
+        ],
+        "mcp_servers": [],
+        "permissionMode": "bypassPermissions",
+        "apiKeySource": "ANTHROPIC_API_KEY",
+        "skills": [
+          "deep-research",
+          "dataviz",
+          "update-config",
+          "verify",
+          "debug",
+          "code-review",
+          "simplify",
+          "batch",
+          "fewer-permission-prompts",
+          "doctor",
+          "loop",
+          "claude-api",
+          "workflow-authoring",
+          "run",
+          "run-skill-generator",
+          "plugin-authoring"
+        ],
+        "agents": [
+          "claude",
+          "Explore",
+          "general-purpose",
+          "Plan",
+          "statusline-setup"
+        ],
+        "plugins": [
+          "cc-plugin-agents-md",
+          "cc-plugin-plugin-authoring"
+        ]
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/v1/messages?beta=true",
+          "anthropic_beta": "interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,claude-code-20250219,thinking-display-updates-2026-08-18",
+          "user_agent": "claude-cli/2.1.290 (external, sdk-cli)",
+          "x_app": "cli",
+          "body_keys": [
+            "context_management",
+            "max_tokens",
+            "messages",
+            "metadata",
+            "model",
+            "stream",
+            "system",
+            "thinking",
+            "tools"
+          ],
+          "model": "claude-haiku-4-5-20251001",
+          "tools": [
+            {
+              "name": "Bash",
+              "type": null
+            },
+            {
+              "name": "Edit",
+              "type": null
+            },
+            {
+              "name": "Read",
+              "type": null
+            }
+          ],
+          "system_bytes": 421,
+          "planted_markers_in_body": 0
+        },
+        {
+          "method": "POST",
+          "path": "/v1/messages?beta=true",
+          "anthropic_beta": "interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,claude-code-20250219",
+          "user_agent": "claude-cli/2.1.290 (external, sdk-cli)",
+          "x_app": "cli",
+          "body_keys": [
+            "context_management",
+            "max_tokens",
+            "messages",
+            "metadata",
+            "model",
+            "stream",
+            "system",
+            "thinking",
+            "tools"
+          ],
+          "model": "claude-haiku-4-5-20251001",
+          "tools": [
+            {
+              "name": "Bash",
+              "type": null
+            },
+            {
+              "name": "Edit",
+              "type": null
+            },
+            {
+              "name": "Read",
+              "type": null
+            }
+          ],
+          "system_bytes": 421,
+          "planted_markers_in_body": 0
+        }
+      ]
+    },
+    {
+      "flags": "-p --bare --setting-sources user --strict-mcp-config --permission-mode bypassPermissions --max-turns 2 --max-budget-usd 0.01 --output-format stream-json --verbose",
+      "init": {
+        "claude_code_version": "2.1.290",
+        "model": "claude-opus-5-5",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Read"
+        ],
+        "mcp_servers": [],
+        "permissionMode": "bypassPermissions",
+        "apiKeySource": "ANTHROPIC_API_KEY",
+        "skills": [
+          "deep-research",
+          "dataviz",
+          "update-config",
+          "verify",
+          "debug",
+          "code-review",
+          "simplify",
+          "batch",
+          "fewer-permission-prompts",
+          "doctor",
+          "loop",
+          "claude-api",
+          "workflow-authoring",
+          "run",
+          "run-skill-generator",
+          "plugin-authoring"
+        ],
+        "agents": [
+          "claude",
+          "Explore",
+          "general-purpose",
+          "Plan",
+          "statusline-setup"
+        ],
+        "plugins": [
+          "cc-plugin-agents-md",
+          "cc-plugin-plugin-authoring"
+        ]
+      },
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/v1/messages?beta=true",
+          "anthropic_beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,per-turn-control-2026-07-01,effort-2025-11-24,thinking-display-updates-2026-08-18",
+          "user_agent": "claude-cli/2.1.290 (external, sdk-cli)",
+          "x_app": "cli",
+          "body_keys": [
+            "context_management",
+            "max_tokens",
+            "messages",
+            "metadata",
+            "model",
+            "output_config",
+            "stream",
+            "system",
+            "thinking",
+            "tools"
+          ],
+          "model": "claude-opus-5-5",
+          "tools": [
+            {
+              "name": "Bash",
+              "type": null
+            },
+            {
+              "name": "Edit",
+              "type": null
+            },
+            {
+              "name": "Read",
+              "type": null
+            }
+          ],
+          "system_bytes": 421,
+          "planted_markers_in_body": 0
+        },
+        {
+          "method": "POST",
+          "path": "/v1/messages?beta=true",
+          "anthropic_beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,per-turn-control-2026-07-01,effort-2025-11-24",
+          "user_agent": "claude-cli/2.1.290 (external, sdk-cli)",
+          "x_app": "cli",
+          "body_keys": [
+            "context_management",
+            "max_tokens",
+            "messages",
+            "metadata",
+            "model",
+            "output_config",
+            "stream",
+            "system",
+            "thinking",
+            "tools"
+          ],
+          "model": "claude-opus-5-5",
+          "tools": [
+            {
+              "name": "Bash",
+              "type": null
+            },
+            {
+              "name": "Edit",
+              "type": null
+            },
+            {
+              "name": "Read",
+              "type": null
+            }
+          ],
+          "system_bytes": 421,
+          "planted_markers_in_body": 0
+        }
+      ]
+    }
+  ]
+}
