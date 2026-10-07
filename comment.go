@@ -17,7 +17,8 @@ type State struct {
 	Owner       string    `json:"owner"`       // login of the writer who added the label
 	Rounds      int       `json:"rounds"`
 	RoundHead   string    `json:"round_head"`
-	Outcome     string    `json:"outcome"` // "running" while a round is in flight
+	Outcome     string    `json:"outcome"`    // "running" while a round is in flight
+	OutcomeAt   time.Time `json:"outcome_at"` // when apply recorded Outcome
 	LastPushSHA string    `json:"last_push_sha"`
 	LastPushAt  time.Time `json:"last_push_at"`
 	HeadSeenSHA string    `json:"head_seen_sha"`

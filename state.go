@@ -31,7 +31,6 @@ type Snapshot struct {
 	RequiredChecks, DismissStale, LastPushApproval bool
 	ReviewerBots                                   []int64 // user IDs from the reviewer_bots input
 	State                                          State
-	RoundEndedAt                                   time.Time // when apply recorded the last round's outcome
 	Now                                            time.Time
 }
 
@@ -160,7 +159,7 @@ func decide(s Snapshot) Decision {
 		}
 	}
 	if st.Rounds > 0 && st.RoundHead == s.Head && !slices.ContainsFunc(s.Feedback, func(f Feedback) bool {
-		return isWriter(f.Author) && f.CreatedAt.After(s.RoundEndedAt)
+		return isWriter(f.Author) && f.CreatedAt.After(st.OutcomeAt)
 	}) {
 		return verdict(NeedsHuman, "the last round ended without a push: %s", st.Outcome)
 	}

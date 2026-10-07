@@ -132,26 +132,26 @@ func TestDecide(t *testing.T) {
 		// Rule 8: last round made no push and nobody acted since.
 		{"round without push", func(s *Snapshot) {
 			s.State.Rounds, s.State.RoundHead, s.State.Outcome = 1, head, "no fix found"
-			s.RoundEndedAt = now.Add(-10 * time.Minute)
+			s.State.OutcomeAt = now.Add(-10 * time.Minute)
 			s.Feedback = []Feedback{thread(writer, newer)}
 		}, NeedsHuman, "no fix found", 0},
 		{"writer commented after round", func(s *Snapshot) {
 			s.State.Rounds, s.State.RoundHead, s.State.Outcome = 1, head, "no fix found"
-			s.RoundEndedAt = now.Add(-10 * time.Minute)
+			s.State.OutcomeAt = now.Add(-10 * time.Minute)
 			s.Feedback = []Feedback{thread(writer, newer), {Kind: "comment", Author: writer, CreatedAt: now.Add(-time.Minute)}}
 		}, Round, "", 1},
 		{"non-writer comment after round doesn't count", func(s *Snapshot) {
 			s.State.Rounds, s.State.RoundHead, s.State.Outcome = 1, head, "no fix found"
-			s.RoundEndedAt = now.Add(-10 * time.Minute)
+			s.State.OutcomeAt = now.Add(-10 * time.Minute)
 			s.Feedback = []Feedback{{Kind: "comment", Author: reader, CreatedAt: now.Add(-time.Minute)}}
 		}, NeedsHuman, "no fix found", 0},
 		{"someone pushed after round", func(s *Snapshot) {
 			s.State.Rounds, s.State.RoundHead, s.State.Outcome = 1, "3333333", "no fix found"
-			s.RoundEndedAt = now.Add(-10 * time.Minute)
+			s.State.OutcomeAt = now.Add(-10 * time.Minute)
 		}, Ready, "", 0},
 		{"round still running is recorded failed", func(s *Snapshot) {
 			s.State.Rounds, s.State.RoundHead, s.State.Outcome = 1, head, "running"
-			s.RoundEndedAt = now.Add(-10 * time.Minute)
+			s.State.OutcomeAt = now.Add(-10 * time.Minute)
 		}, NeedsHuman, "failed", 0},
 		// Rule 9: items.
 		{"failed check", func(s *Snapshot) { s.Checks[0].Conclusion = "FAILURE" }, Round, "", 1},
