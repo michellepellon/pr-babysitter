@@ -1,0 +1,28 @@
+# ABOUTME: Task 0 spike (throwaway): reusable workflow whose job uses `environment: babysit` and asks for an OIDC token.
+# ABOUTME: Prints only selected payload claims, so callers can see which repo's environment the job used.
+name: spike-oidc
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  oidc-claims:
+    runs-on: ubuntu-latest
+    environment: babysit
+    permissions:
+      id-token: write
+    steps:
+      - name: Print OIDC payload claims (never the token)
+        run: |
+          # The JWT goes straight from curl into jq. jq keeps only the payload segment,
+          # decodes it, and prints chosen claims, so no token text reaches the log.
+          set -o pipefail
+          curl -sS --fail-with-body \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=spike" \
+          | jq -c '.value | split(".")[1] | gsub("-"; "+") | gsub("_"; "/")
+              | . + ("=" * ((4 - (length % 4)) % 4)) | @base64d | fromjson
+              | {sub, environment, ref, repository, repository_owner, job_workflow_ref, workflow_ref, event_name, claim_names: keys}' \
+          | sed 's/^/Q4_CLAIMS=/'
