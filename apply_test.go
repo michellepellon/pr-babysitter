@@ -318,3 +318,62 @@ func TestApplyStopsOnStalePR(t *testing.T) {
 		t.Errorf("origin branch moved to %s", got)
 	}
 }
+
+// setApplyEnv sets cmdApply's inputs from f.input() and stubs the PR re-read.
+func (f *fixture) setApplyEnv() {
+	in := f.input()
+	for k, v := range map[string]string{"BABYSIT_DIR": in.dir, "BABYSIT_PR": in.pr, "BABYSIT_HEAD": in.head,
+		"BABYSIT_BRANCH": in.branch, "BABYSIT_BUNDLE": in.bundle, "BABYSIT_PROOFS": in.proofs, "BABYSIT_BOT": in.bot} {
+		f.t.Setenv(k, v)
+	}
+	old := rereadPR
+	f.t.Cleanup(func() { rereadPR = old })
+	rereadPR = func(pr, head string) error { return nil }
+}
+
+func TestCmdApplyDryRunUnlessTurnedOff(t *testing.T) {
+	for _, v := range []string{"unset", "", "true", "no", "0", "False"} {
+		t.Run(v, func(t *testing.T) {
+			f := newFixture(t, "feat")
+			f.testAndFix()
+			f.setApplyEnv()
+			t.Setenv("BABYSIT_DRY_RUN", v)
+			if v == "unset" {
+				os.Unsetenv("BABYSIT_DRY_RUN")
+			}
+			if code := cmdApply(nil); code != 0 {
+				t.Fatalf("cmdApply = %d, want 0", code)
+			}
+			if got := f.originBranch(); got != f.head {
+				t.Errorf("BABYSIT_DRY_RUN=%q pushed: origin branch at %s", v, got)
+			}
+		})
+	}
+	f := newFixture(t, "feat")
+	tip := f.testAndFix()
+	f.setApplyEnv()
+	t.Setenv("BABYSIT_DRY_RUN", "false")
+	if code := cmdApply(nil); code != 0 || f.originBranch() != tip {
+		t.Errorf("BABYSIT_DRY_RUN=false: cmdApply = %d, origin at %s; want 0 and %s", code, f.originBranch(), tip)
+	}
+}
+
+func TestCmdApplyValidatesInputs(t *testing.T) {
+	f := newFixture(t, "feat")
+	f.testAndFix()
+	f.setApplyEnv()
+	t.Setenv("BABYSIT_DRY_RUN", "false")
+	t.Setenv("BABYSIT_PROTECTED_PATHS", "a_test.go")
+	if code := cmdApply(nil); code != 1 || f.originBranch() != f.head {
+		t.Errorf("protected path from BABYSIT_PROTECTED_PATHS: cmdApply = %d, want 1 and no push", code)
+	}
+	t.Setenv("BABYSIT_PROTECTED_PATHS", "")
+	t.Setenv("BABYSIT_PR", "7;x")
+	if code := cmdApply(nil); code != 1 || f.originBranch() != f.head {
+		t.Errorf("bad PR number: cmdApply = %d, want 1 and no push", code)
+	}
+	t.Setenv("BABYSIT_PR", "")
+	if code := cmdApply(nil); code != 2 {
+		t.Errorf("missing PR number: cmdApply = %d, want 2", code)
+	}
+}

@@ -23,6 +23,9 @@ const (
 	lintCommand = "sh lint.sh"
 )
 
+// defaultAgentPrefix is agentPrefix before newProofRepo clears it.
+var defaultAgentPrefix = agentPrefix
+
 // newProofRepo makes a repo whose base commit holds the proof scripts and
 // code.txt, and returns its directory and base SHA.
 func newProofRepo(t *testing.T) (string, string) {
@@ -99,8 +102,11 @@ func TestProveAcceptsTestThenFix(t *testing.T) {
 	lint := addFix(t, dir, "fixed", "lint")
 
 	out := filepath.Join(t.TempDir(), "report.json")
-	args := []string{"-repo", dir, "-base", base, "-test-command", testCommand, "-lint-command", lintCommand, "-out", out}
-	if code := cmdProve(args); code != 0 {
+	for k, v := range map[string]string{"BABYSIT_REPO": dir, "BABYSIT_BASE": base, "BABYSIT_OUT": out,
+		"BABYSIT_TEST_COMMAND": testCommand, "BABYSIT_LINT_COMMAND": lintCommand} {
+		t.Setenv(k, v)
+	}
+	if code := cmdProve(nil); code != 0 {
 		t.Fatalf("cmdProve = %d, want 0", code)
 	}
 	b, err := os.ReadFile(out)
@@ -214,5 +220,24 @@ func TestProveTimeoutKillsProcessGroup(t *testing.T) {
 			t.Fatalf("grandchild %d still alive after the timeout", pid)
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// The runner's environment holds inputs and the job's OIDC request token; none
+// of it may reach the agent. sudo needs root here, so run the rest of the prefix.
+func TestRunAsGivesAgentACleanEnvironment(t *testing.T) {
+	if defaultAgentPrefix[0] != "sudo" || defaultAgentPrefix[3] != "env" {
+		t.Fatalf("agentPrefix = %q, want sudo -u agent env ...", defaultAgentPrefix)
+	}
+	defer func(p []string) { agentPrefix = p }(agentPrefix)
+	agentPrefix = defaultAgentPrefix[3:]
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "secret")
+	t.Setenv("BABYSIT_REPO", "/tmp/x")
+	out, err := runAs(t.Context(), t.TempDir(), []string{"env"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := out, "HOME=/home/agent\nPATH="+os.Getenv("PATH"); got != want {
+		t.Errorf("agent environment = %q, want %q", got, want)
 	}
 }

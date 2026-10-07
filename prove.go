@@ -7,7 +7,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -35,21 +34,19 @@ type proofResult struct {
 	Precedes string `json:"precedes,omitempty"`
 }
 
+// cmdProve's inputs: BABYSIT_REPO is the agent's clone, checked out at the
+// bot's last commit; BABYSIT_BASE the round head; BABYSIT_OUT where to write
+// the proof report. A test proof appends its selector to BABYSIT_TEST_COMMAND.
 func cmdProve(args []string) int {
-	fs := flag.NewFlagSet("prove", flag.ContinueOnError)
-	repo := fs.String("repo", "", "agent's clone, checked out at the bot's last commit")
-	base := fs.String("base", "", "the round head")
-	testCmd := fs.String("test-command", "", "test_command; a proof appends its selector")
-	lintCmd := fs.String("lint-command", "", "lint_command")
-	out := fs.String("out", "", "where to write the proof report")
-	if fs.Parse(args) != nil || *repo == "" || *base == "" || *out == "" {
-		fmt.Fprintln(os.Stderr, "usage: pr-babysitter prove -repo DIR -base SHA -out FILE [-test-command CMD] [-lint-command CMD]")
+	env, ok := envInputs("prove", args, []string{"BABYSIT_REPO", "BABYSIT_BASE", "BABYSIT_OUT"},
+		"BABYSIT_TEST_COMMAND", "BABYSIT_LINT_COMMAND")
+	if !ok {
 		return 2
 	}
-	report, err := prove(*repo, *base, *testCmd, *lintCmd)
+	report, err := prove(env["BABYSIT_REPO"], env["BABYSIT_BASE"], env["BABYSIT_TEST_COMMAND"], env["BABYSIT_LINT_COMMAND"])
 	if err == nil {
 		b, _ := json.MarshalIndent(report, "", "  ")
-		err = os.WriteFile(*out, b, 0o644)
+		err = os.WriteFile(env["BABYSIT_OUT"], b, 0o644)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "prove:", err)

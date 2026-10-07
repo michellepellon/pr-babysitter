@@ -428,8 +428,19 @@ func TestGatewayFailedExchangeIs502WithoutTokens(t *testing.T) {
 }
 
 func TestCmdGatewayNeedsItsEnvironment(t *testing.T) {
-	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", "")
-	if code := cmdGateway([]string{"-port", "0"}); code != 2 {
-		t.Errorf("exit %d, want 2", code)
+	for _, k := range []string{"ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+		"FEDERATION_RULE_ID", "ORGANIZATION_ID", "SERVICE_ACCOUNT_ID", "WORKSPACE_ID"} {
+		t.Setenv(k, "x")
+	}
+	for _, port := range []string{"", "0", "-1", "x", "8080x"} {
+		t.Setenv("BABYSIT_PORT", port)
+		if code := cmdGateway(nil); code != 2 {
+			t.Errorf("BABYSIT_PORT=%q: exit %d, want 2", port, code)
+		}
+	}
+	t.Setenv("BABYSIT_PORT", "1")
+	t.Setenv("WORKSPACE_ID", "")
+	if msg := stderrOf(t, func() { cmdGateway(nil) }); !strings.Contains(msg, "missing WORKSPACE_ID") {
+		t.Errorf("printed %q, want missing WORKSPACE_ID", msg)
 	}
 }

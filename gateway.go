@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +15,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -205,26 +205,22 @@ func callJSON(step string, req *http.Request, out any) error {
 	return nil
 }
 
-// cmdGateway runs the gateway on 127.0.0.1 until it fails.
+// cmdGateway runs the gateway on 127.0.0.1:$BABYSIT_PORT until it fails.
 func cmdGateway(args []string) int {
-	fs := flag.NewFlagSet("gateway", flag.ContinueOnError)
-	port := fs.Int("port", 0, "port to listen on, on 127.0.0.1 (required)")
-	if fs.Parse(args) != nil || *port <= 0 {
-		fmt.Fprintln(os.Stderr, "usage: pr-babysitter gateway -port N")
+	env, ok := envInputs("gateway", args, []string{"BABYSIT_PORT", "ACTIONS_ID_TOKEN_REQUEST_URL",
+		"ACTIONS_ID_TOKEN_REQUEST_TOKEN", "FEDERATION_RULE_ID", "ORGANIZATION_ID", "SERVICE_ACCOUNT_ID", "WORKSPACE_ID"})
+	if !ok {
 		return 2
 	}
-	env := map[string]string{}
-	for _, k := range []string{"ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
-		"FEDERATION_RULE_ID", "ORGANIZATION_ID", "SERVICE_ACCOUNT_ID", "WORKSPACE_ID"} {
-		if env[k] = os.Getenv(k); env[k] == "" {
-			fmt.Fprintln(os.Stderr, "gateway: missing", k)
-			return 2
-		}
+	port, err := strconv.Atoi(env["BABYSIT_PORT"])
+	if err != nil || port <= 0 {
+		fmt.Fprintln(os.Stderr, "gateway: BABYSIT_PORT must be a port number")
+		return 2
 	}
 	upstream, _ := url.Parse("https://api.anthropic.com")
 	g := newGateway(upstream, env["ACTIONS_ID_TOKEN_REQUEST_URL"], env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"], map[string]string{
 		"federation_rule_id": env["FEDERATION_RULE_ID"], "organization_id": env["ORGANIZATION_ID"],
 		"service_account_id": env["SERVICE_ACCOUNT_ID"], "workspace_id": env["WORKSPACE_ID"]}, os.Stderr)
-	fmt.Fprintln(os.Stderr, "gateway:", http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", *port), g))
+	fmt.Fprintln(os.Stderr, "gateway:", http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", port), g))
 	return 1
 }

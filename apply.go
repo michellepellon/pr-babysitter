@@ -5,9 +5,9 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -41,23 +41,21 @@ var (
 	closingRE = regexp.MustCompile(`(?i)\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b[\s:]+\S*(#|issues/|pull/)\d+`)
 )
 
+// cmdApply's inputs: BABYSIT_PR, the round's BABYSIT_HEAD SHA, the PR's
+// BABYSIT_BRANCH, work's BABYSIT_BUNDLE and BABYSIT_PROOFS report, and the
+// BABYSIT_BOT identity, "name <email>". BABYSIT_DIR is a clone whose origin is
+// the PR's repo (default "."), and BABYSIT_PROTECTED_PATHS adds whitespace-
+// separated paths to the built-in list. Only BABYSIT_DRY_RUN=false pushes.
 func cmdApply(args []string) int {
-	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
-	in := applyInput{rereadPR: rereadPR}
-	fs.StringVar(&in.dir, "C", ".", "clone whose origin is the PR's repo")
-	fs.StringVar(&in.pr, "pr", "", "PR number")
-	fs.StringVar(&in.head, "head", "", "the round's head SHA")
-	fs.StringVar(&in.branch, "branch", "", "the PR's head branch")
-	fs.StringVar(&in.bundle, "bundle", "", "work's bundle")
-	fs.StringVar(&in.proofs, "proofs", "", "work's proof report")
-	fs.StringVar(&in.bot, "bot", "", `bot identity, "name <email>"`)
-	extra := fs.String("protected-paths", "", "whitespace-separated paths added to the built-in list")
-	fs.BoolVar(&in.dryRun, "dry-run", true, "check everything but push nothing")
-	if fs.Parse(args) != nil {
+	env, ok := envInputs("apply", args, []string{"BABYSIT_PR", "BABYSIT_HEAD", "BABYSIT_BRANCH",
+		"BABYSIT_BUNDLE", "BABYSIT_PROOFS", "BABYSIT_BOT"}, "BABYSIT_DIR", "BABYSIT_PROTECTED_PATHS", "BABYSIT_DRY_RUN")
+	if !ok {
 		return 2
 	}
-	in.protected = slices.Concat(builtinProtected, strings.Fields(*extra))
-	out, err := apply(in)
+	out, err := apply(applyInput{dir: cmp.Or(env["BABYSIT_DIR"], "."), pr: env["BABYSIT_PR"], head: env["BABYSIT_HEAD"],
+		branch: env["BABYSIT_BRANCH"], bundle: env["BABYSIT_BUNDLE"], proofs: env["BABYSIT_PROOFS"], bot: env["BABYSIT_BOT"],
+		protected: slices.Concat(builtinProtected, strings.Fields(env["BABYSIT_PROTECTED_PATHS"])),
+		dryRun:    env["BABYSIT_DRY_RUN"] != "false", rereadPR: rereadPR})
 	if err != nil {
 		fmt.Println(err)
 		return 1
