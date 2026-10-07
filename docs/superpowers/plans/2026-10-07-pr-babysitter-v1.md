@@ -14,11 +14,11 @@
 it in dry-run mode.
 
 **Progress (2026-10-07):**
-- **State:** Task 0 is done; see `2026-10-07-task0-findings.md`. The spec and
-  this plan are on branch `wip/design-spec`, in PR #1 of
-  `michellepellon/pr-babysitter`.
-- **Next:** Task 1, in a fresh session.
-- **Compactions:** the session that ran Task 0 was compacted at least once.
+- **State:** Tasks 0 and 1 are done. Task 0's findings are in
+  `2026-10-07-task0-findings.md`; the spec and this plan merged to `main` in
+  PR #1. Task 1 is on branch `wip/task1-scaffold`.
+- **Next:** Tasks 2–6, which can run in parallel.
+- **Compactions:** none in the Task 1 session.
 - **Open:** narrowing the federation rule to `workspace:inference` (see
   "Before Task 0") must happen before the pilot reaches work repos.
 
@@ -136,19 +136,25 @@ responses are captured for tests.
 
 ## Task 1: Scaffold
 
-- [ ] Run `go mod init`, using the module path decided above, with the Go
+- [x] Run `go mod init`, using the module path decided above, with the Go
   version pinned in `action.yml`.
-- [ ] Write `main.go`: dispatch on the first argument; with a missing or unknown
+- [x] Write `main.go`: dispatch on the first argument; with a missing or unknown
   subcommand, print usage and exit 2. Test this first.
-- [ ] Write the `Makefile`:
+- [x] Write the `Makefile`:
   - `check` fails on any `gofmt -l` output, then runs `go vet ./...`,
     `go test ./...`, `zizmor` on the workflows, examples, and action, and
     `shellcheck sandbox.sh`.
   - `e2e` runs `e2e/run.sh`.
-- [ ] Add `.github/workflows/check.yml`, which runs `make check` on every push
+- [x] Add `.github/workflows/check.yml`, which runs `make check` on every push
   and PR, with actions pinned by SHA and `permissions: contents: read`.
 
 Budget: 30 lines of Go.
+
+**Notes (2026-10-07):** `action.yml` didn't exist yet, so `go.mod` pins Go
+1.27.1, and `check.yml` reads it with `go-version-file`. Task 8's `action.yml`
+should read `go.mod` the same way. `make check` runs zizmor through
+`uvx zizmor@1.30.1` and globs its lint targets, so it skips files that later
+tasks will add. `make e2e` fails until Task 9 writes `e2e/run.sh`.
 
 ## Task 2: State rules (`state.go`)
 
