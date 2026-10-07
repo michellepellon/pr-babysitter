@@ -172,7 +172,8 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
 7. **Prove the fixes.** Kill every `agent` process first. Our program drives the
    proofs from the runner user, but every git and proof command runs as
    `agent`, passed as an argument list with no shell: either
-   `test_command <selector>` or `lint_command`.
+   `test_command <selector>` or `lint_command`. Each command is split on
+   whitespace, with no quoting, and the selector is one more argument.
    - Selectors must match `^[A-Za-z0-9_./:\[\]-]{1,200}$`.
    - Each proved commit must fail its proof at its parent and pass at itself.
    - Every other commit must be the parent of a commit that does.
@@ -250,7 +251,7 @@ changes. The comment has three parts:
 
 1. **The state line.** Line 1 is `<!-- babysit-state {...} -->`. Its fields are
    `v`, `label_event`, `owner`, `rounds`, `round_head`, `outcome`,
-   `last_push_sha`, `last_push_at`, `head_seen_sha`, and `head_seen_at`. plan
+   `outcome_at`, `last_push_sha`, `last_push_at`, `head_seen_sha`, and `head_seen_at`. plan
    reads only this line, only from comments by github-actions[bot] (matched by
    ID), and pages through all of a PR's comments to find it.
 2. **The status.** The state, what the PR is waiting on, and an @mention of the
