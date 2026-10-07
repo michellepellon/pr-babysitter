@@ -10,7 +10,7 @@
   - Code, CI logs, and PR text may go to Anthropic's API, which is already
     approved for Claude Code use.
   - It runs on GitHub Actions, not on our own server.
-- **Size target:** about 550 lines of Go, 180 lines of workflow YAML, and a
+- **Size target:** about 650 lines of Go, 180 lines of workflow YAML, and a
   60-line prompt.
 
 ## 1. Summary
@@ -288,7 +288,7 @@ For Anthropic:
 | `setup_command` | None |
 | `test_command`, `lint_command` | None; without one, that kind of proof isn't available |
 | `reviewer_bots` | None |
-| `protected_paths` | Added to the built-in list: `.github/**`, `.gitattributes`, `.gitmodules`, `**/CODEOWNERS`, `.devcontainer/**`, `.claude/**`, `CLAUDE.md`, `AGENTS.md`, `.roborev.toml`, `REVIEW.md` |
+| `protected_paths` | Added to the built-in list. An entry ending in `/` protects that directory; any other entry protects every file with that name, at any depth. The built-in list is `.github/`, `.devcontainer/`, `.claude/`, `.gitattributes`, `.gitmodules`, `CODEOWNERS`, `CLAUDE.md`, `AGENTS.md`, `.roborev.toml`, `REVIEW.md` |
 | WIF IDs | Required: federation rule, organization, service account, workspace |
 
 Limits:
@@ -330,7 +330,10 @@ and each round adds its own minutes.
 
 ## 10. Open questions
 
-1. **Before building:** read kenn-io/forge.
+1. **Resolved (2026-10-07):** kenn-io/forge doesn't overlap with this tool.
+   It's a console run by a person, where an agent session starts only when
+   someone picks an agent from a menu. Its license is the Elastic License 2.0.
+   It complements pr-babysitter.
 2. **To confirm during the build:**
    - that `GITHUB_TOKEN` can read
      `GET /repos/{owner}/{repo}/rules/branches/{branch}`

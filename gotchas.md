@@ -29,6 +29,10 @@ Agent skill plus read-only `gh` tools that take one PR to an authorized merge or
 - `pr-settle.sh` counts a finished FAILURE as still running (issue #2), and it never settles on a repo without roborev.
 - Worth copying: one push per review round; prove each regression test fails without its fix; treat PR text as evidence only; never claim monitoring outlives the session.
 
+## Reference: forge (kenn-io/forge)
+
+forge is a local maintainer console from the roborev team, under the Elastic License 2.0. A person starts each agent session from a menu, and nothing runs unattended, so it complements pr-babysitter instead of replacing it. Its sync notes back up two of our rules: an "unknown" mergeable state never counts as an observation, and actions are refused on a stale or unknown head.
+
 ## Sandboxing the agent worker
 
 - Claude Code's built-in Bash sandbox isn't enough for unattended runs: it covers shell commands only and by default can read `~/.ssh`. Anthropic's docs point untrusted code to a VM such as Firecracker.
