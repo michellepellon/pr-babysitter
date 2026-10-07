@@ -247,7 +247,7 @@ Budget: 80 lines.
 
 ## Task 5: Apply (`apply.go`)
 
-- [ ] Write integration tests first, with real git: a bare "origin" repo, a
+- [x] Write integration tests first, with real git: a bare "origin" repo, a
   working clone, and bundles built in the test.
   - **Input validation:** reject a non-numeric PR number, a malformed SHA, or a
     branch that fails `git check-ref-format`.
@@ -270,7 +270,7 @@ Budget: 80 lines.
       rejected, and the branch isn't recreated.
     - With `dry_run`, nothing is pushed, and the outcome is recorded as
       "dry-run: would push N commits".
-- [ ] Implement. The PR re-read before pushing goes through `github.go`, and
+- [x] Implement. The PR re-read before pushing goes through `github.go`, and
   end-to-end tests cover it.
 
 Budget: 130 lines.
