@@ -1,256 +1,367 @@
-<!-- ABOUTME: Design spec for pr-babysitter, a team tool that takes labeled GitHub PRs to merge-ready or to a named blocker. -->
-<!-- ABOUTME: v2 after a ponytail pass: GitHub-native, three Actions jobs and one small Go program. -->
+<!-- ABOUTME: Design spec for pr-babysitter, a GitHub Actions tool that takes labeled PRs to merge-ready or to a named blocker. -->
+<!-- ABOUTME: Covers the three jobs, state rules, sandbox, trust boundaries, defaults, setup, and tests. -->
 
-# pr-babysitter design (v2)
+# pr-babysitter design
 
-- **Dates:**
-  - v1: 2026-10-06
-  - v2: 2026-10-07, after a ponytail pass that cut everything GitHub or an
-    existing tool already does
-- **Status:** Draft for review. Nothing is built yet.
+- **Status:** Direction approved. This revision applies the fresh-eyes
+  review. Nothing is built yet.
 - **Decided:**
-  - It serves a team (Michelle, 2026-10-06).
-  - Code, CI logs, and PR text may go to Anthropic's API. This is already
-    approved for Claude Code use (Michelle, 2026-10-07).
-- **Proposed, needs Michelle's OK:** run on GitHub Actions with GitHub-hosted
-  runners instead of our own Linux server. v1's server-and-Firecracker design
-  (commit `3b9f9cc`) becomes the upgrade path in §10.
+  - It serves a team.
+  - Code, CI logs, and PR text may go to Anthropic's API, which is already
+    approved for Claude Code use.
+  - It runs on GitHub Actions, not on our own server.
+- **Size target:** about 550 lines of Go, 180 lines of workflow YAML, and a
+  60-line prompt.
 
 ## 1. Summary
 
-pr-babysitter fixes what blocks a labeled PR (failing checks and review findings)
-and tells the PR's owner when only a person can act. It never reviews, approves,
-or merges. GitHub's auto-merge and branch protection handle merging.
+pr-babysitter fixes whatever blocks a labeled PR (failing checks and review
+findings) and tells the PR's owner when only a person can act. It never reviews,
+approves, or merges.
 
-It's one reusable GitHub Actions workflow with three jobs, plus one small Go
-program:
+Each pilot repo calls one reusable workflow with three jobs:
 
-| Job | Runs | GitHub token | Does |
+| Job | `GITHUB_TOKEN` permissions | Runs repo code? | Does |
 |---|---|---|---|
-| plan | Every 5 minutes (schedule) and on demand | Read | Finds labeled PRs, works out each one's state, writes items for the ones that need a round, updates status comments |
-| work | Once per PR that needs a round | Read-only, never visible to the agent | Runs Claude Code as an unprivileged user behind a local egress proxy and key gateway, proves each fix, bundles the commits |
-| apply | After work | GitHub App token, created in this job only | Checks the bundle, pushes it to the PR branch, updates the status comment |
+| plan | contents, actions, checks, and statuses: read; pull requests: write | No | Works out each labeled PR's state, updates status comments, picks at most one PR for a round |
+| work | contents: read; id-token: write | Yes, as the unprivileged user `agent` | Runs Claude Code in a sandbox, proves each fix, bundles the commits |
+| apply | contents and pull requests: write | No | Checks the bundle, pushes it, records the outcome |
 
-Each job runs on a fresh GitHub-hosted VM. The agent's job never holds a write
-token or the model API key. The job that holds the write token never runs repo
-code or the agent.
+There is no GitHub App and no stored secret:
 
-## 2. What GitHub already does
+- The model credential comes from GitHub's identity token, through Anthropic
+  Workload Identity Federation (WIF).
+- apply pushes with `GITHUB_TOKEN`. CI runs on the bot's commits therefore start
+  in GitHub's approval-required state, and wait until someone with write access
+  clicks "Approve workflows to run".
 
-None of these needs code from us:
+## 2. What GitHub and Anthropic already do
 
-| Need | Built-in feature |
+| Need | Covered by |
 |---|---|
-| Merge when ready | Auto-merge |
-| Keep up with base | The update-branch button; merge queue |
-| A person approves bot code before merge | Branch protection: dismiss stale approvals, and require approval of the most recent push |
-| The bot can't edit CI | A GitHub App without the `workflows` permission can't push workflow changes |
-| Review of sensitive config | CODEOWNERS, with code-owner review required |
-| Scheduling, timeouts, one run at a time | `schedule`, `timeout-minutes`, `concurrency` |
+| Merging when ready | Auto-merge; merge queue |
+| A person approves bot code before merge | Rulesets: dismiss stale approvals, and require approval of the most recent push. plan checks both. |
+| A person approves before CI runs bot code | Pushes made with `GITHUB_TOKEN` create approval-required runs |
+| The bot can't edit workflows | `GITHUB_TOKEN` can't write `.github/workflows`. apply also blocks all of `.github/**`. |
+| Model credential | WIF: a GitHub OIDC token is exchanged for a 10-minute Anthropic token |
+| Spend cap | A workspace spend limit in Anthropic, plus Claude Code's `--max-budget-usd` |
+| Triggers, one run at a time, timeouts | `schedule`, `workflow_run`, `concurrency`, `timeout-minutes` |
 | A fresh machine per job | GitHub-hosted runners |
-| Audit trail and retention | Actions logs and artifacts, git history, PR comments |
-| Notify people | @mentions, the GitHub Slack app, scheduled reminders |
+| Cache poisoning | `cache-mode: none`, enforced by GitHub's cache service |
+| Audit trail | Actions logs and artifacts, git history, PR comments |
+| Notifications | @mentions, GitHub's Slack app, scheduled reminders |
 | Pause | Remove the `babysit` label, or disable the workflow |
-| App tokens | `actions/create-github-app-token` |
-| Cap model spend | A workspace spend limit in the Anthropic Console |
-| Read config from the default branch | Scheduled workflows always run from the default branch |
+
+Things we would build only if needed:
+
+- **Firecracker microVMs for work** (design in commit `3b9f9cc`): if policy
+  forbids GitHub-hosted runners, or the threat model needs a kernel boundary
+  around the agent.
+- **A queryable ledger:** if someone asks questions that the GitHub API and
+  Actions logs can't answer.
+- **Our own notifications:** if GitHub's fall short.
 
 ## 3. States
 
-`plan` reads each PR with one GraphQL query and applies these rules in order,
-stopping at the first match:
+plan reads each open, labeled PR with one GraphQL query, always passing values
+as variables and never building the query string by hand. It applies these
+rules in order and stops at the first that matches:
 
-1. No `babysit` label, or the label was added by someone without write access:
-   skip.
-2. Fork PR: set the status to "fork PRs aren't supported" and skip.
-3. Round cap reached (5 rounds): needs-human.
-4. The last round asked for a person, and nobody has commented, reviewed, or
-   pushed since: needs-human.
-5. A check on the head is still running (rollup state pending or expected):
-   waiting.
-6. There are items: start a round. Items are any of these:
-   - failed checks on the head
-   - unresolved review threads or change requests with human comments newer
-     than the bot's last push
-   - comments from listed reviewer bots newer than the head
-7. Conflicts: needs-human ("resolve conflicts").
-8. Not approved: needs-human ("needs review").
-9. Otherwise: ready ("approved and green; enable auto-merge").
+1. The PR comes from a fork, or the newest `babysit` label wasn't added by a
+   person with write access: **skip**. A fork PR gets a one-time "not supported"
+   status.
+2. The base branch's rules lack required checks, stale-approval dismissal, or
+   last-push approval: **needs-human** ("repo setup incomplete"). No rounds run
+   until this is fixed.
+3. Five rounds have run since the label was added: **needs-human**. Removing and
+   re-adding the label resets the count.
+4. The PR has merge conflicts: **needs-human** ("resolve conflicts"). PR
+   workflows don't run on a conflicted PR, so waiting would never end.
+5. The head is the bot's last push, and its workflow runs haven't been approved:
+   **needs-human** ("review the bot's commits, then approve the workflow runs").
+6. A check on the head is pending, or GitHub hasn't yet computed mergeability or
+   checks: **waiting**. After 60 minutes on the same head: **needs-human**,
+   naming the stuck check.
+7. A check was cancelled, needs action, or went stale: **needs-human**, naming
+   the check.
+8. The last round ended without a push, and no writer has commented, reviewed,
+   or pushed since: **needs-human**, giving that round's reason.
+9. There are items: **start a round**. Items are:
+   - checks on the head that failed, timed out, or errored;
+   - unresolved review threads and change requests from writers that are newer
+     than the bot's last push (all of them, before the bot's first push);
+   - comments from listed reviewer bots that name the head commit.
+10. The PR isn't approved: **needs-human** ("needs review").
+11. Otherwise: **ready** ("approved and green; merge or enable auto-merge").
 
-A round starts only after every check on the head has finished. That way one
-round sees everything, and a finished failure can't be mistaken for a check
-that's still running. The PR's owner is whoever added the label.
+plan judges each check on its own state, never on GitHub's combined rollup,
+which can report failure while other checks are still running. It identifies
+people and bots by user ID, never by login.
 
 ## 4. A round
 
-1. **Items.** `plan` writes the round's items to an artifact: failed checks with
-   their logs (`gh run view --log-failed`), review threads, change requests, and
-   reviewer-bot comments. Everything is marked as untrusted data.
-2. **Sandbox setup.** In `work`, as root:
-   - Create a user `agent`, with no sudo and not in the docker group.
-   - Start the key gateway and the egress proxy as root.
-   - Add iptables and ip6tables rules so `agent` can reach only those two local
-     ports.
-   - Check out the repo with `persist-credentials: false`.
-3. **Agent.** As `agent`, run the repo's setup command. Then run a pinned
-   Claude Code with `claude -p`, using the prompt adapted from shepherd-pr (MIT,
-   with its notice), with `ANTHROPIC_BASE_URL` pointing at the gateway and
-   `HTTPS_PROXY` at the proxy. The agent:
-   - proves or refutes each item against the code;
-   - fixes valid, in-scope items, each as a test commit followed by a fix commit
-     that carries a `Babysit-Proof: <command>` trailer (a lint fix needs no test
-     commit, since its proof is the lint command);
-   - writes `summary.md` with each item's outcome, and `NEEDS_HUMAN.md` if a
-     person must decide something.
-4. **Prove.** As `agent`, after Claude Code exits:
-   - Every commit with a proof trailer must fail its proof at its parent and
-     pass at itself.
-   - Every other commit must be the parent of a commit that does.
-   - Any failure means no push.
-5. **Bundle.** As `agent`, run `git bundle create` over the new commits. The
-   privileged user never runs git inside the agent's checkout, where planted git
-   config could run code.
-6. **Apply.** On a fresh VM:
-   - Fetch the bundle into an empty repo with `transfer.fsckObjects`.
-   - Check that it descends from the round's head, deletes no files, and stays
-     under the size and commit caps.
-   - Push to the PR branch as a plain push, so it fails if anyone else pushed in
-     the meantime.
-   - Update the status comment.
+Each run handles at most one round: of the PRs that qualify, the one whose label
+is oldest. The workflow's `concurrency` group allows one run per repo, plus one
+pending.
 
-   For pilots, `dry_run` skips the push.
-7. **CI.** CI runs on the new head as usual, because the App token pushed it.
-   Pushes made with `GITHUB_TOKEN` don't start workflows.
+### plan
+
+Before work starts, plan:
+
+- writes the round into the status comment's state: the round count plus one,
+  the round's head, and an outcome of `running`;
+- uploads the items as an artifact: the tail of each failed job's log
+  (`gh run view --log-failed`, at most 200 KB each), the review threads, and the
+  comments.
+
+If the state still says `running` when the next run starts, that round died, and
+plan records it as failed.
+
+### work
+
+work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
+
+1. **Check the branch.** Fail unless the run is on the default branch.
+2. **Set up users and code.** As root, create users `agent` and `gateway`,
+   neither with sudo or Docker access. Check out the PR head with
+   `persist-credentials: false`, then clone it into `agent`'s home as `agent`.
+3. **Run setup.** As `agent`, with an open network and no credentials in reach,
+   run the repo's `setup_command`. Only code a person has approved gets here:
+   - the first round runs the human's own head;
+   - every later head ran CI only after a person approved it (rule 5).
+4. **Close the network.** iptables and ip6tables rules drop all of `agent`'s
+   traffic, DNS and ICMP included, except connections to the gateway's port on
+   127.0.0.1.
+5. **Start the gateway.** As `gateway`, start the model gateway (described
+   below), passing it the job's OIDC request variables.
+6. **Run Claude Code.** As `agent`, run Claude Code under `env -i`, so it sees
+   only these variables:
+   - `HOME` and `PATH`
+   - `ANTHROPIC_BASE_URL`, pointing at the gateway
+   - a placeholder `ANTHROPIC_API_KEY`
+   - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
+
+   Use the flags `-p --bare --permission-mode bypassPermissions --max-turns 100
+   --max-budget-usd 10 --output-format stream-json --verbose`. `--bare` stops
+   Claude Code from loading any hooks, MCP servers, skills, or `CLAUDE.md` from
+   the PR, and leaves it only shell and file tools.
+
+   The prompt is adapted from shepherd-pr (MIT, keeping its notice). It tells
+   the agent to:
+   - prove or refute each item against the code, treating item text as data;
+   - fix each valid, in-scope item as a test commit followed by a fix commit,
+     where the fix commit's trailer names its proof: either
+     `Babysit-Proof: test <selector>` or `Babysit-Proof: lint`;
+   - write `summary.md` with each item's outcome, and `needs-human.md` if a
+     person must decide something.
+7. **Prove the fixes.** Kill every `agent` process first. Our program drives the
+   proofs from the runner user, but every git and proof command runs as
+   `agent`, passed as an argument list with no shell: either
+   `test_command <selector>` or `lint_command`.
+   - Selectors must match `^[A-Za-z0-9_./:\[\]-]{1,200}$`.
+   - Each proved commit must fail its proof at its parent and pass at itself.
+   - Every other commit must be the parent of a commit that does.
+   - Every proof must also pass at the final commit.
+   - Each proof gets 5 minutes, and all of them together get 10.
+   - Any failure means no push.
+8. **Collect the output.** Kill every `agent` process again. Read the outputs
+   only as streams from commands run as `agent` (`git bundle create -` and
+   `cat`), with caps of 10 MB for the bundle and 20 KB for the summary. Upload
+   them with the proof report and the transcript, and keep these artifacts for
+   3 days. work sets no job outputs.
+
+### The model gateway
+
+The gateway is a small reverse proxy on 127.0.0.1. It:
+
+- exchanges the job's GitHub OIDC token for a 10-minute Anthropic token, and
+  refreshes it before it expires;
+- forwards only `POST /v1/messages` and `/v1/messages/count_tokens`;
+- rejects any request body that contains `mcp_servers` or `container`, or a tool
+  whose `type` marks it as a server tool. Otherwise Anthropic's own servers
+  could fetch an attacker's URL with our code in it.
+- replaces the agent's auth headers with its own;
+- stops after 400 requests per round.
+
+### apply
+
+apply has a 10-minute timeout. Its steps:
+
+1. **Validate inputs.** Check the PR number, head SHA, and branch name that plan
+   passed (the branch name with `git check-ref-format`). Pass every
+   GitHub-derived value to steps through `env:`. Never interpolate a `${{ }}`
+   expression that holds PR, branch, comment, or agent data into a `run:`
+   script.
+2. **Re-read the PR.** It must still be open, not from a fork, labeled by a
+   writer, and on the same head. Otherwise record "stale" and stop.
+3. **Check the bundle.** Fetch the round's head, then `git fetch` the bundle
+   with `transfer.fsckObjects`. Require all of these:
+   - exactly one ref
+   - it descends from the round's head
+   - no merge commits
+   - the bot identity authored and committed every commit
+   - no issue-closing keywords such as "Fixes #12"
+   - no deleted files, checked with `--no-renames` so that renames count as
+     deletions
+   - no changes under protected paths
+   - at most 20 commits, 1,000 changed lines in total, and 400 lines per file
+   - a proof report that covers exactly these commits
+4. **Push.** Unless `dry_run` is set, push with
+   `--force-with-lease=refs/heads/<branch>:<round head>`. A plain push would
+   succeed even after a person had reset the branch to an older commit, and
+   would bring back the commits they had dropped.
+5. **Record the outcome.** Always (`if: always()`) record the outcome and update
+   the status comment.
 
 ## 5. Status comment
 
-The App writes one comment per PR and updates it whenever the state changes. The
-comment holds:
-- the state, and what the PR is waiting on
-- an @mention of the owner when a person must act
-- the last round's outcomes
-- a hidden JSON block with the round count and the last push
+github-actions[bot] writes one comment per PR and edits it whenever the state
+changes. The comment has three parts:
 
-`plan` trusts that hidden block only when our App wrote the comment. It escapes
-@-mentions in agent-written text before posting.
+1. **The state line.** Line 1 is `<!-- babysit-state {...} -->`. Its fields are
+   `v`, `label_event`, `owner`, `rounds`, `round_head`, `outcome`,
+   `last_push_sha`, `last_push_at`, `head_seen_sha`, and `head_seen_at`. plan
+   reads only this line, only from comments by github-actions[bot] (matched by
+   ID), and pages through all of a PR's comments to find it.
+2. **The status.** The state, what the PR is waiting on, and an @mention of the
+   owner (the writer who added the label) whenever a person must act.
+3. **The last round's summary,** inside a fenced code block. The fence must be
+   longer than any run of backticks in the text, so that agent text can't
+   render links, images, mentions, or HTML. An image link alone can leak data
+   through GitHub's image proxy.
 
-## 6. Security
+## 6. Security model
 
-These protections stay:
+Guarantees:
 
-| Property | How |
+- The agent never holds a GitHub token or a model credential. While it runs, it
+  can reach only the gateway.
+- Nothing the agent writes runs with CI's secrets, or reaches the default
+  branch, until a person approves it.
+- PRs can't change how pr-babysitter behaves. It runs only from the default
+  branch, its inputs live there, and it pins its reusable workflow and every
+  action by commit SHA.
+- Only writers can adopt a PR or create items. Text from anyone else never
+  becomes work.
+- apply trusts nothing from work except a bundle that passes every check in §4.
+
+Residual risks, accepted for v1:
+
+- If the agent gains root inside work, it can mint Anthropic tokens until the
+  job ends (capped by the workspace spend limit) and reach the internet for that
+  job. It still can't write to GitHub, touch the cache, or reach apply's
+  machine.
+- People may approve the bot's CI runs without reading its commits.
+- Other workflows in the same repo also post as github-actions[bot]. One that
+  echoed attacker text could fake the state line. The worst case is extra
+  rounds, which the spend limits cap.
+- Proofs catch mistakes. They won't stop an agent that sets out to deceive.
+
+## 7. Setup
+
+For each pilot repo:
+
+- A ruleset on the default branch that requires status checks, dismisses stale
+  approvals, and requires approval of the most recent push.
+- An environment named `babysit`, limited to the default branch, holding no
+  secrets.
+- Workflow permissions that let jobs request write access, plus access to the
+  org's `pr-babysitter` repo. That repo holds the reusable workflow and a
+  composite action that builds the Go program.
+- A caller workflow of about 25 lines:
+  - triggers: `schedule` (hourly), `workflow_run` (on the repo's CI
+    workflows), and `workflow_dispatch`
+  - `cache-mode: none`
+  - the inputs in §8
+
+For Anthropic:
+
+- A WIF service account in a workspace that has a spend limit.
+- A federation rule that matches `repo:<org>/<repo>:environment:babysit` and
+  `repository_owner`, with a 600-second token lifetime.
+
+## 8. Inputs, limits, and cost
+
+| Input | Default |
 |---|---|
-| The agent has no GitHub write access | `work` gets a read-only token that `agent` never sees; the App token exists only in `apply` |
-| The agent has no model key | The key lives in the root-owned gateway process |
-| Outbound traffic is allowlisted | An iptables owner match routes `agent` traffic only to the proxy, which allows only the gateway and the repo's package registries |
-| Every round starts fresh | GitHub-hosted runners |
-| A PR can't change its own rules | The workflow and its inputs come from the default branch |
-| Only writers can adopt a PR | `plan` checks the labeler's permission |
-| The bot can't touch CI | The App lacks the `workflows` permission |
-| A person approves before merge | Branch protection |
-| The bundle is untrusted | fsck, ancestry check, no deleted files, caps |
-| Status or review comments could be forged | Author checks against our App and the listed bots |
+| `dry_run` | `true` |
+| `setup_command` | None |
+| `test_command`, `lint_command` | None; without one, that kind of proof isn't available |
+| `reviewer_bots` | None |
+| `protected_paths` | Added to the built-in list: `.github/**`, `.gitattributes`, `.gitmodules`, `**/CODEOWNERS`, `.devcontainer/**`, `.claude/**`, `CLAUDE.md`, `AGENTS.md`, `.roborev.toml`, `REVIEW.md` |
+| WIF IDs | Required: federation rule, organization, service account, workspace |
 
-This is weaker than v1 in one place: the agent and the gateway share a kernel.
-If the agent gains root inside `work`, it gets the model key (capped by the
-workspace limit), the job's read-only token, and unrestricted outbound traffic
-for the rest of that job. It still gets no write access and nothing outside
-that VM. v1 put a KVM boundary there, but the price was running and hardening a
-server that held the org-wide App key right next to the agent. §10 says when
-to switch back.
+Limits:
 
-## 7. Repo setup
+- 5 rounds per label
+- 20 PRs read per run
+- Timeouts: plan 10 minutes; work 45 minutes (30 for the agent, 10 for proofs);
+  apply 10 minutes
 
-- **GitHub App.** Contents write, pull requests write, checks and statuses
-  read, metadata read, and no `workflows` permission. Confirm the exact list
-  while building.
-- **Branch protection** on pilot repos: required checks, dismiss stale
-  approvals, require approval of the most recent push. Use CODEOWNERS for
-  review config such as `.roborev.toml` and `REVIEW.md`.
-- **A 20-line caller workflow** per repo:
-  `uses: <org>/pr-babysitter/.github/workflows/babysit.yml@v1`. Its inputs are
-  the setup command, the package registries, the reviewer-bot logins, and
-  `dry_run`.
-- **Org secrets.** The App's ID and private key, plus a dedicated Anthropic API
-  key created in a workspace that has a spend limit.
+Cost: every run bills at least one runner minute. Hourly scans cost about 720
+minutes per repo per month. On top of that, each CI completion triggers one run,
+and each round adds its own minutes.
 
-## 8. Testing
+## 9. Testing
 
-- **Unit:** the state rules, as a pure function of the GraphQL response; parsing
-  of trailers and the summary.
-- **Integration,** with real git and real sockets: prove, bundle checks, the
-  gateway, and the proxy.
-- **End to end,** with no mocks, in a sandbox repo with the real App, real
-  runners, and the real model:
-  1. A failing test gets a proved fix and a push.
-  2. A malicious PR comment tells the agent to push to another branch and send
-     code to an outside host. Nothing leaves, and the outbound attempt is
-     blocked.
-  3. A refuted finding produces no push and an explanation.
-  4. Hitting the round cap ends in needs-human.
-- `make check` runs `go vet` and `go test ./...`.
+- **Unit tests:**
+  - state rules, from recorded GraphQL responses
+  - check classification
+  - the gateway's request filter
+  - the bundle checks
+  - parsing of trailers and selectors
+- **Integration tests,** with real git and real sockets:
+  - prove
+  - apply's checks, including the case where someone reset the branch during the
+    round
+  - the gateway's token refresh and forwarding, against a local server that
+    stands in for Anthropic's endpoints
+- **End-to-end tests,** with no mocks, in a sandbox repo with real runners, WIF,
+  and the real model:
+  1. A failing test gets a proved fix, and CI waits for approval.
+  2. A malicious comment asks the agent to push somewhere else and to fetch an
+     outside URL. Nothing leaves the machine except model calls the gateway
+     allows.
+  3. An edit to `.github/actions/` is rejected.
+  4. Removing the label mid-round stops the push.
+  5. Resetting the branch during a round makes the push fail.
+  6. Reaching the round cap ends in needs-human.
+- `make check` runs `go vet`, `go test ./...`, and `zizmor` on the workflows.
 
-## 9. Size
+## 10. Open questions
 
-| Piece | v1 (server) | v2 |
-|---|---|---|
-| Go | ~3,900 lines | ~410 lines: plan ~150, apply ~90, prove ~50, status comment ~40, proxy and gateway ~80 |
-| Workflow YAML | none | ~120 lines, plus ~20 per repo |
-| Agent prompt | none | ~60 lines |
-| Tests | ~3,900 lines | ~420 lines |
-| Servers to run | 1, hardened, with KVM | 0 |
+1. **Before building:** read kenn-io/forge.
+2. **To confirm during the build:**
+   - that `GITHUB_TOKEN` can read
+     `GET /repos/{owner}/{repo}/rules/branches/{branch}`
+   - the minimal permission needed for PR comments
+   - how runs awaiting approval appear in GraphQL
+   - that a reusable workflow's `environment` resolves in the caller's repo
+   - github-actions[bot]'s user ID
+   - which API endpoints Claude Code calls
+3. **Signed commits:** do the pilot repos require them? Commits pushed with git
+   aren't signed, so apply would have to create commits through GitHub's API
+   instead.
+4. **Pilot repos:** which repos go first, and what are their setup, test, and
+   lint commands?
 
-## 10. What we cut, and when to add it back
-
-| Cut | Add back when |
-|---|---|
-| Our own server, Firecracker, jailer, vsock, images, launcher | GitHub-hosted runners aren't allowed, Actions minutes cost more than a server, or the threat model needs a kernel boundary around the agent |
-| A separate verifier VM | A deceptive agent faking proofs becomes a real risk (CI already re-runs the full suite) |
-| Merge and update levels, merge grants | Never; auto-merge and merge queue cover them |
-| `/babysit` commands | Labels, auto-merge, and re-run prove too coarse |
-| Slack code, reminders, escalation, quiet hours, daily sweep | GitHub's Slack app and scheduled reminders fall short |
-| SQLite ledger, backups, retention, metrics | Someone asks a question that Actions logs and the GitHub API can't answer |
-| `.pr-babysitter.toml` and layered policy | Repos need settings that caller-workflow inputs can't carry |
-| Protected-path lists, heuristics for deleted tests | The no-deleted-files rule, CODEOWNERS, and the missing `workflows` permission let something real through |
-| Check identity, required-check lookup, settle timeout, adaptive polling | A hung or misattributed check blocks a real PR |
-| GitHub API client, rate limiting, App JWT code | `gh` and `actions/create-github-app-token` fall short |
-| Parallel rounds within one repo | One run at a time per repo becomes the bottleneck |
-
-## 11. Risks
-
-1. **Fix quality is still the big unknown.** Pilot with `dry_run`, then on one
-   repo.
-2. **Actions minutes.** Rounds can run up to 45 minutes, on paid runners for
-   private repos.
-3. **The shared kernel in `work`** (see §6).
-4. **Scheduling is coarse.** Runs come at most every five minutes, and GitHub
-   may delay scheduled runs.
-5. **Tests that need Docker** won't run as `agent`.
-6. **kenn-io/forge is still unread.**
-
-## 12. Open questions
-
-1. Is it OK to use GitHub Actions on GitHub-hosted runners instead of our own
-   server?
-2. What's the Actions minutes budget for the pilot repos?
-3. Who creates and approves the GitHub App?
-4. Will the pilot repos turn on the branch protection settings in §7?
-5. Do the pilot repos require signed commits? If so, `apply` must create commits
-   through GitHub's API.
-6. Which repos pilot first, and what are their setup and test commands?
-
-## 13. References
+## 11. References
 
 - Davis et al., "Agentic AI and Code Reviews," Enterprise Technology Leadership
-  Journal, Fall 2026: [PDF][paper]
-- roborev: [site](https://www.roborev.io/),
-  [repository](https://github.com/kenn-io/roborev)
-- shepherd-pr (MIT): [repository](https://github.com/prime-radiant-inc/shepherd-pr)
-- Firecracker, for the upgrade path:
-  [repository](https://github.com/firecracker-microvm/firecracker)
+  Journal, Fall 2026: [PDF](https://readwise-assets.s3.amazonaws.com/media/wisereads/articles/agentic-ai-and-code-reviews/1439.pdf)
+- [roborev](https://www.roborev.io/)
+- [shepherd-pr](https://github.com/prime-radiant-inc/shepherd-pr) (MIT)
+- [Firecracker](https://github.com/firecracker-microvm/firecracker), for the
+  upgrade path
+- [anthropics/claude-code-action](https://github.com/anthropics/claude-code-action):
+  not used, because there Claude runs in the same job as its GitHub token. Its
+  CI auto-fix and WIF examples are still worth reading.
+- GitHub:
+  - [approval-required runs for `GITHUB_TOKEN` PR updates](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
+  - [cache-mode](https://github.blog/changelog/2026-09-10-control-github-actions-cache-access-with-cache-mode/)
+  - [secure use of Actions](https://docs.github.com/en/actions/reference/security/secure-use)
 - Anthropic:
-  [sandbox environments](https://code.claude.com/docs/en/sandbox-environments),
-  [secure deployment](https://code.claude.com/docs/en/agent-sdk/secure-deployment),
-  [workspaces and spend limits](https://support.claude.com/en/articles/9796807-creating-and-managing-workspaces)
-
-[paper]: https://readwise-assets.s3.amazonaws.com/media/wisereads/articles/agentic-ai-and-code-reviews/1439.pdf
+  - [WIF with GitHub Actions](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions)
+  - [sandbox environments](https://code.claude.com/docs/en/sandbox-environments)
+  - [secure deployment](https://code.claude.com/docs/en/agent-sdk/secure-deployment)
+  - [workspaces and spend limits](https://support.claude.com/en/articles/9796807-creating-and-managing-workspaces)

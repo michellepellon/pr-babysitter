@@ -37,4 +37,12 @@ Agent skill plus read-only `gh` tools that take one PR to an authorized merge or
 
 ## Decision: team service on a shared Linux server (2026-10-06)
 
-pr-babysitter serves a team, not one person's laptop, and needs a GitHub App bot identity. Code, CI logs, and PR text may go to Anthropic's API: this is already approved for Claude Code use (Michelle, 2026-10-07). Read the draft spec first: `docs/superpowers/specs/2026-10-06-pr-babysitter-design.md`. Its v2 (2026-10-07) proposes GitHub Actions instead of our own server, pending approval.
+pr-babysitter serves a team. It runs on GitHub Actions in each pilot repo, with no server, no GitHub App, and no stored secrets (decided 2026-10-07). Code, CI logs, and PR text may go to Anthropic's API; that is already approved for Claude Code use. Read the spec first: `docs/superpowers/specs/2026-10-06-pr-babysitter-design.md`.
+
+## Workflow and agent security (verified 2026-10-07)
+
+- Push the bot's fixes with `GITHUB_TOKEN`. CI runs on those pushes then wait for a writer to approve them, so CI secrets never run unreviewed agent code. App and personal tokens skip that approval.
+- Never interpolate a `${{ }}` holding PR, branch, comment, or agent data into a `run:` script; pass it through `env:`. Branch names may contain `$(...)`. Pin every action and reusable workflow by commit SHA, and set `cache-mode: none`.
+- Get the model credential from Anthropic Workload Identity Federation, pinned to `repo:<org>/<repo>:environment:babysit`. Any writer can read a repo's secrets, so don't store keys.
+- The model gateway must reject `mcp_servers` and server tools. Otherwise Anthropic's servers can carry repo code to an attacker's URL.
+- Push with `--force-with-lease=<ref>:<round head>`. A plain push succeeds after someone resets the branch, and restores the commits they dropped.
