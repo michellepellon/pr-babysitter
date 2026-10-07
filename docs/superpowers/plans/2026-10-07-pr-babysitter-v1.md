@@ -225,7 +225,7 @@ Budget: 50 lines.
 All commands go through a `runAs` function. In tests it runs as the current
 user; in production it runs `sudo -u agent env -i …`.
 
-- [ ] Write integration tests first, against a tiny real git repo in
+- [x] Write integration tests first, against a tiny real git repo in
   `t.TempDir()`:
   - **Selectors:** the pattern `^[A-Za-z0-9_./:\[\]-]{1,200}$` rejects spaces,
     `;`, `$`, `|`, backticks, and newlines.
@@ -240,7 +240,7 @@ user; in production it runs `sudo -u agent env -i …`.
     - a later fix breaks an earlier proof at the final commit.
   - **Timeouts:** a proof that runs past its limit has its process group
     killed.
-- [ ] Implement. The output is a JSON proof report mapping each commit to its
+- [x] Implement. The output is a JSON proof report mapping each commit to its
   result.
 
 Budget: 80 lines.
