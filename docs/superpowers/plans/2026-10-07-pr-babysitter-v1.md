@@ -64,14 +64,27 @@ Order: Task 0 comes first, because it can change details. Tasks 2–6 are
 independent and can run in parallel. Task 7 needs Tasks 2 and 3. Task 8 needs
 Tasks 4–7. Task 9 needs Task 8, and Task 10 comes last.
 
-## Before Task 0 (Michelle or an admin)
+## Before Task 0
 
-- A private sandbox repo where we can create rulesets and environments, and
-  approve workflow runs.
-- In the Anthropic Console: a WIF service account in a workspace that has a
-  spend limit, and a federation rule for the sandbox repo's `babysit`
-  environment.
-- The org that will host `pr-babysitter`, which sets the Go module path.
+Michelle decided on 2026-10-07 to start on her personal GitHub account and move
+to the org later.
+
+- **Repos:**
+  - `michellepellon/pr-babysitter` holds the tool.
+  - `michellepellon/pr-babysitter-sandbox` holds the spike and end-to-end runs.
+  - Give both the same visibility, so the sandbox can call the reusable
+    workflow. Private repos need GitHub Pro for rulesets and environments;
+    public repos work on any plan.
+- **Go module path:** `github.com/michellepellon/pr-babysitter`.
+- **Anthropic (Michelle, in the Claude Console):**
+  - Under Settings → Workload identity → Connect workload, pick GitHub Actions.
+  - Create a service account in a workspace that has a spend limit.
+  - Create a federation rule that matches
+    `repo:michellepellon/pr-babysitter-sandbox:environment:babysit`, with
+    `repository_owner: michellepellon` and a 600-second token lifetime.
+- **After the move to the org:** transfer both repos, then update the module
+  path, every caller's `uses:` line, and the federation rule's repository and
+  owner.
 
 ## Task 0: Platform spike (throwaway)
 

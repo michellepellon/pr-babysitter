@@ -41,7 +41,7 @@ forge is a local maintainer console from the roborev team, under the Elastic Lic
 
 ## Decision: team service on a shared Linux server (2026-10-06)
 
-pr-babysitter serves a team. It runs on GitHub Actions in each pilot repo, with no server, no GitHub App, and no stored secrets (decided 2026-10-07). Code, CI logs, and PR text may go to Anthropic's API; that is already approved for Claude Code use. Read the spec first: `docs/superpowers/specs/2026-10-06-pr-babysitter-design.md`.
+pr-babysitter serves a team. It runs on GitHub Actions in each pilot repo, with no server, no GitHub App, and no stored secrets (decided 2026-10-07). Code, CI logs, and PR text may go to Anthropic's API; that is already approved for Claude Code use. Read the spec first: `docs/superpowers/specs/2026-10-06-pr-babysitter-design.md`. It lives on Michelle's personal account for now (`michellepellon/pr-babysitter` and `-sandbox`) and moves to the org later. After the move, update the module path, callers' `uses:` lines, and the WIF federation rule.
 
 ## Workflow and agent security (verified 2026-10-07)
 
