@@ -79,9 +79,15 @@ to the org later.
 - **Anthropic (Michelle, in the Claude Console):**
   - Under Settings → Workload identity → Connect workload, pick GitHub Actions.
   - Create a service account in a workspace that has a spend limit.
-  - Create a federation rule that matches
-    `repo:michellepellon/pr-babysitter-sandbox:environment:babysit`, with
-    `repository_owner: michellepellon` and a 600-second token lifetime.
+  - Create a federation rule with:
+    - `subject_prefix` exactly
+      `repo:michellepellon@122621769/pr-babysitter-sandbox@1409071530:environment:babysit`,
+      with no trailing `*`. Task 0 found that new repos use GitHub's
+      immutable-ID subject, so `repo:michellepellon/...` never matches.
+    - audience `https://api.anthropic.com`
+    - claims `repository_owner: michellepellon` and `ref: refs/heads/main`
+    - scope `workspace:inference`
+    - a 600-second token lifetime
 - **After the move to the org:** transfer both repos, then update the module
   path, every caller's `uses:` line, and the federation rule's repository and
   owner.
@@ -90,6 +96,12 @@ to the org later.
 
 This spike is throwaway: a scratch workflow in the sandbox repo, and none of it
 ships. Its job is to settle spec §10.2 before any code depends on it.
+
+**Status (2026-10-07):** questions 1–5 are answered, and question 6 is
+answered offline. See `2026-10-07-task0-findings.md` and `testdata/task0/`.
+Question 7's first run got a 401 from the token exchange, which points at the
+federation rule. The sandbox's `spike-q67-wif.yml` reruns questions 6 and 7
+together.
 
 - [ ] Run a scratch workflow in the sandbox repo that records:
   1. Whether `GITHUB_TOKEN` can read
@@ -155,6 +167,12 @@ and the round's items.
     - pending: queued, in_progress, waiting, pending, requested, expected, and
       any value we don't recognize (failing safe)
   - **Mixed checks:** one failed check and one still running means waiting.
+  - **CI awaiting approval:** a bot head whose check suite concluded
+    `action_required`, with GraphQL's combined status `null`, means
+    needs-human ("approve the workflow runs"). Use
+    `testdata/task0/q3-*-before-approval.json`.
+  - **Duplicate runs:** two runs of the same check on one SHA, with every run
+    judged. Use `testdata/task0/setup-main-push-runs.json`.
   - **Unknown state:** mergeability UNKNOWN, or no checks yet, means waiting.
     60 minutes on the same head means needs-human, naming the check.
   - **Adoption:** a label from a non-writer or a bot means skip. A fork means
@@ -246,8 +264,9 @@ Budget: 130 lines.
 ## Task 6: Gateway (`gateway.go`)
 
 - [ ] Unit tests for the request filter:
-  - It allows only `POST /v1/messages` and `POST /v1/messages/count_tokens`.
-    Any other method or path gets a 403.
+  - It allows only `POST /v1/messages` and `POST /v1/messages/count_tokens`,
+    with or without a query string (Claude Code sends `?beta=true`). Any other
+    method or path gets a 403.
   - It rejects any body containing `mcp_servers` or `container`, and any tool
     whose `type` isn't empty or `custom`.
   - It removes incoming `x-api-key` and `authorization` headers and sets its
@@ -258,6 +277,8 @@ Budget: 130 lines.
   - The first request triggers the token exchange, using the request fields
     from the WIF doc.
   - The token is reused until 60 seconds before it expires, then refreshed.
+  - Every exchange fetches a new GitHub OIDC token; the stand-in rejects a
+    repeated one, as Anthropic does.
   - Streamed responses pass through event by event.
   - A failed exchange returns 502 to the agent, and the log never contains a
     token.
@@ -273,7 +294,9 @@ Budget: 110 lines.
   - collaborator role names to writer, meaning `admin`, `maintain`, or `write`;
   - issue events to the latest `babysit` label event and its actor.
 - [ ] Write thin wrappers around `gh api graphql -F`, always passing values as
-  variables, and `gh api`, with `--paginate` where needed. Use
+  variables, and `gh api`, with `--paginate` where needed. Also read the head's
+  check suites (`GET /repos/{o}/{r}/commits/{sha}/check-suites`), because CI
+  waiting for approval appears only there. Use
   `gh run view --log-failed` to get each failed job's log, keeping at most the
   last 200 KB.
 - [ ] Write `plan`. In order, it:
@@ -292,9 +315,14 @@ Budget: 130 lines, including the GraphQL query.
 
 - [ ] Write `sandbox.sh`, which work runs as root:
   - create users `agent` and `gateway`, neither with sudo or Docker access;
+  - before the network closes, install Claude Code at a pinned version as
+    `agent` under `env -i`, so its install scripts never see the OIDC request
+    variables;
   - after setup, add iptables and ip6tables OUTPUT rules for the `agent` user
     that accept traffic to 127.0.0.1 on the gateway's port and drop everything
     else, DNS and ICMP included.
+- [ ] Run Claude Code with the spec's flags and `< /dev/null`: `claude -p`
+  otherwise waits for stdin to close.
 - [ ] Write `prompt.md` by adapting shepherd-pr's "Triage and verify" section,
   keeping its MIT notice. Add:
   - the trailer format;
@@ -360,6 +388,11 @@ status comment and branch and asserts the outcome:
 
 `make e2e` runs the scenarios in order and prints a summary. The full logs stay
 in the Actions runs.
+
+The sandbox has only one maintainer, and its ruleset requires approval from
+someone other than the last pusher. So for any test that needs a merge, use a
+second GitHub account or the admin bypass. Use scenario 1 to test what
+`require_extra_approval_for_unattributed_changes` does.
 
 ## Task 10: README and pilot
 

@@ -1,0 +1,7 @@
+# GITHUB_TOKEN Permissions block from each spike job's 'Set up job' log (runner output)
+q1/rules-no-permissions (job 112900950082): Metadata: read
+q1/rules-contents-read (job 112900949640): Contents: read,Metadata: read
+q2/pull-requests-write (job 112901461695): Metadata: read,PullRequests: write
+q2/issues-write (job 112901462035): Issues: write,Metadata: read
+q3/push-commit (job 112902023054): Contents: write,Metadata: read
+q4/call-oidc-oidc-claims (job 112902313538): Metadata: read

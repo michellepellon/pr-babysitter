@@ -77,8 +77,11 @@ rules in order and stops at the first that matches:
    re-adding the label resets the count.
 4. The PR has merge conflicts: **needs-human** ("resolve conflicts"). PR
    workflows don't run on a conflicted PR, so waiting would never end.
-5. The head is the bot's last push, and its workflow runs haven't been approved:
+5. The head is the bot's last push, and its CI is waiting for approval:
    **needs-human** ("review the bot's commits, then approve the workflow runs").
+   In this state a check suite or run for the head has concluded
+   `action_required` with no jobs, and GraphQL's combined status is `null`.
+   That means plan must read check suites to detect it.
 6. A check on the head is pending, or GitHub hasn't yet computed mergeability or
    checks: **waiting**. After 60 minutes on the same head: **needs-human**,
    naming the stuck check.
@@ -141,10 +144,18 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
    - a placeholder `ANTHROPIC_API_KEY`
    - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
 
-   Use the flags `-p --bare --permission-mode bypassPermissions --max-turns 100
-   --max-budget-usd 10 --output-format stream-json --verbose`. `--bare` stops
-   Claude Code from loading any hooks, MCP servers, skills, or `CLAUDE.md` from
-   the PR, and leaves it only shell and file tools.
+   Use the flags `-p --bare --setting-sources user --strict-mcp-config
+   --permission-mode bypassPermissions --max-turns 100 --max-budget-usd 10
+   --output-format stream-json --verbose`. Task 0 planted files to test these
+   flags:
+   - `--bare` keeps out the PR's `CLAUDE.md`, `AGENTS.md`, skills, commands,
+     subagents, hooks, and `.mcp.json`, and leaves only the Bash, Edit, and Read
+     tools.
+   - `--bare` still applies the PR's `.claude/settings.json`, such as its
+     `model`, so `--setting-sources user` and `--strict-mcp-config` shut that
+     out. `agent`'s own home holds no settings.
+   - `--bare` cuts Claude Code's system prompt to three lines, so our prompt
+     carries all the coding guidance.
 
    The prompt is adapted from shepherd-pr (MIT, keeping its notice). It tells
    the agent to:
@@ -175,8 +186,10 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
 The gateway is a small reverse proxy on 127.0.0.1. It:
 
 - exchanges the job's GitHub OIDC token for a 10-minute Anthropic token, and
-  refreshes it before it expires;
-- forwards only `POST /v1/messages` and `/v1/messages/count_tokens`;
+  refreshes it before it expires. Each exchange fetches a fresh GitHub token,
+  because Anthropic accepts each one only once;
+- forwards only `POST /v1/messages` and `/v1/messages/count_tokens`, matching
+  the URL path alone, since Claude Code adds `?beta=true`;
 - rejects any request body that contains `mcp_servers` or `container`, or a tool
   whose `type` marks it as a server tool. Otherwise Anthropic's own servers
   could fetch an attacker's URL with our code in it.
@@ -237,7 +250,9 @@ Guarantees:
 - The agent never holds a GitHub token or a model credential. While it runs, it
   can reach only the gateway.
 - Nothing the agent writes runs with CI's secrets, or reaches the default
-  branch, until a person approves it.
+  branch, until a person approves it. No job is given `actions: write`, so
+  pr-babysitter can never approve its own CI runs. A person's token can,
+  through `POST /actions/runs/{id}/approve`.
 - PRs can't change how pr-babysitter behaves. It runs only from the default
   branch, its inputs live there, and it pins its reusable workflow and every
   action by commit SHA.
@@ -262,7 +277,9 @@ Residual risks, accepted for v1:
 For each pilot repo:
 
 - A ruleset on the default branch that requires status checks, dismisses stale
-  approvals, and requires approval of the most recent push.
+  approvals, and requires approval of the most recent push. Bind each required
+  check to the GitHub Actions app (integration ID 15368). An unbound check
+  passes for any status that uses the same name.
 - An environment named `babysit`, limited to the default branch, holding no
   secrets.
 - Workflow permissions that let jobs request write access, plus access to the
@@ -277,8 +294,14 @@ For each pilot repo:
 For Anthropic:
 
 - A WIF service account in a workspace that has a spend limit.
-- A federation rule that matches `repo:<org>/<repo>:environment:babysit` and
-  `repository_owner`, with a 600-second token lifetime.
+- A federation rule for each repo, with scope `workspace:inference` and a
+  600-second token lifetime. Repos created after 2026-07-15 use GitHub's
+  immutable-ID subject by default, so set `subject_prefix` to exactly
+  `repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:babysit`, with no
+  trailing `*`, which would make it a prefix match. Add the claims
+  `repository_owner: <owner>` and `ref: refs/heads/<default branch>`.
+  Optionally, add a CEL condition that pins `job_workflow_ref` to
+  `<owner>/pr-babysitter/.github/workflows/babysit.yml@`.
 
 ## 8. Inputs, limits, and cost
 
@@ -334,14 +357,30 @@ and each round adds its own minutes.
    It's a console run by a person, where an agent session starts only when
    someone picks an agent from a menu. Its license is the Elastic License 2.0.
    It complements pr-babysitter.
-2. **To confirm during the build:**
-   - that `GITHUB_TOKEN` can read
-     `GET /repos/{owner}/{repo}/rules/branches/{branch}`
-   - the minimal permission needed for PR comments
-   - how runs awaiting approval appear in GraphQL
-   - that a reusable workflow's `environment` resolves in the caller's repo
-   - github-actions[bot]'s user ID
-   - which API endpoints Claude Code calls
+2. **Confirmed in Task 0 (2026-10-07):**
+   - `GITHUB_TOKEN` can read the rules endpoint with only metadata read. This
+     was tested on a public repo only.
+   - `pull-requests: write` is enough to create and edit PR comments;
+     `issues: write` alone isn't.
+   - CI waiting for approval looks like rule 5 describes. The waiting run can be
+     approved through the API, and it reruns under the same run ID.
+   - A reusable workflow's `environment` resolves in the caller's repo, and the
+     environment's branch policy blocks dispatches from other branches.
+   - github-actions[bot] is user ID 41898282. GraphQL reports its login as
+     `github-actions`, so match it by ID.
+   - Offline, `claude -p --bare` calls only `POST /v1/messages?beta=true`,
+     with no server tools.
+
+   See `docs/superpowers/plans/2026-10-07-task0-findings.md`.
+
+   **Still open:**
+   - whether Claude Code calls anything else after a real response, or tries
+     any address but the gateway (Task 0, question 6, on a runner)
+   - the WIF exchange end to end (question 7). The first try got a 401, which
+     points at the federation rule.
+   - what the undocumented ruleset field
+     `require_extra_approval_for_unattributed_changes: true` does to merging
+     bot-pushed commits (test this in Task 9)
 3. **Signed commits:** do the pilot repos require them? Commits pushed with git
    aren't signed, so apply would have to create commits through GitHub's API
    instead.

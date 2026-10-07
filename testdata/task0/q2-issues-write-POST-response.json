@@ -1,0 +1,5 @@
+{
+  "message": "Resource not accessible by integration",
+  "documentation_url": "https://docs.github.com/rest/issues/comments#create-an-issue-comment",
+  "status": "403"
+}
