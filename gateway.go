@@ -26,6 +26,14 @@ import (
 var allowedFields = map[string]bool{"max_tokens": true, "messages": true, "metadata": true, "model": true,
 	"output_config": true, "stream": true, "system": true, "thinking": true, "tools": true}
 
+// forwardHeaders are the only request headers sent upstream; the rest are dropped,
+// not refused, so SDK telemetry such as x-stainless-* can't fail a round. Task 0
+// recorded only anthropic-beta and user-agent; the SDK always sends
+// anthropic-version. The e2e suite must confirm this list. Content-Length comes
+// from the request's ContentLength, and with Accept-Encoding dropped Go's
+// transport asks for gzip and decodes it as it streams, as Task 0's proxy did.
+var forwardHeaders = []string{"Authorization", "Content-Type", "Accept", "Anthropic-Version", "Anthropic-Beta", "User-Agent"}
+
 const maxRequests = 400 // per round; each round runs its own gateway
 
 type gateway struct {
@@ -45,7 +53,13 @@ type gateway struct {
 func newGateway(upstream *url.URL, oidcURL, oidcToken string, ids map[string]string, logw io.Writer) *gateway {
 	l := log.New(logw, "gateway: ", log.LstdFlags)
 	return &gateway{upstream: upstream, oidcURL: oidcURL, oidcToken: oidcToken, ids: ids, now: time.Now, log: l,
-		proxy: &httputil.ReverseProxy{ErrorLog: l, Rewrite: func(r *httputil.ProxyRequest) { r.SetURL(upstream) }}}
+		proxy: &httputil.ReverseProxy{ErrorLog: l, Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(upstream)
+			r.Out.Header = http.Header{}
+			for _, k := range forwardHeaders {
+				r.Out.Header[k] = r.In.Header[k]
+			}
+		}}}
 }
 
 func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +82,6 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Forward the body as we parsed it, so Anthropic sees exactly what we checked
 	// (no duplicate keys or other parser differences).
 	r.Body, r.ContentLength = io.NopCloser(bytes.NewReader(body)), int64(len(body))
-	r.Header.Del("X-Api-Key")
 	r.Header.Set("Authorization", "Bearer "+token)
 	g.proxy.ServeHTTP(w, r)
 }
@@ -78,6 +91,9 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func checkRequest(r *http.Request) ([]byte, error) {
 	if r.Method != "POST" || (r.URL.Path != "/v1/messages" && r.URL.Path != "/v1/messages/count_tokens") {
 		return nil, fmt.Errorf("%s %s is not allowed", r.Method, r.URL.Path)
+	}
+	if q := r.URL.RawQuery; q != "" && q != "beta=true" {
+		return nil, fmt.Errorf("query %q is not allowed", q)
 	}
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {

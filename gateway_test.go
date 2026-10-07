@@ -120,12 +120,23 @@ func TestFilterAllowsOnlyMessagesEndpoints(t *testing.T) {
 		{"POST", "/v1/oauth/token", false},
 		{"POST", "/v1/messages/", false},
 		{"POST", "/api/hello", false},
+		{"POST", "/v1/messages?beta=false", false},
+		{"POST", "/v1/messages?beta=true&x=1", false},
+		{"POST", "/v1/messages?url=https://evil.example/", false},
 	} {
 		r := httptest.NewRequest(c.method, c.target, strings.NewReader(okBody))
 		_, err := checkRequest(r)
 		if (err == nil) != c.ok {
 			t.Errorf("%s %s: err = %v, want ok=%v", c.method, c.target, err, c.ok)
 		}
+	}
+}
+
+func TestGatewayRefusesOtherQueriesByName(t *testing.T) {
+	g, _, _ := testGateway(t, newFakes(t))
+	w := post(t, g, "/v1/messages?evil=1", okBody)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "evil=1") {
+		t.Errorf("got %d %q, want 403 naming the query", w.Code, w.Body.String())
 	}
 }
 
@@ -195,12 +206,16 @@ func TestFilterRejectsSourcesOtherThanBase64OrText(t *testing.T) {
 	}
 }
 
-func TestGatewaySwapsAuthHeaders(t *testing.T) {
+func TestGatewayForwardsOnlyAllowedHeaders(t *testing.T) {
 	f := newFakes(t)
 	g, _, _ := testGateway(t, f)
 	r := httptest.NewRequest("POST", "/v1/messages?beta=true", strings.NewReader(okBody))
 	r.Header.Set("X-Api-Key", "placeholder")
 	r.Header.Set("Authorization", "Bearer agent-made-this-up")
+	r.Header.Set("X-Evil", "1")
+	r.Header.Set("X-Stainless-Lang", "js")
+	r.Header.Set("Anthropic-Version", "2023-06-01")
+	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	g.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
@@ -208,6 +223,16 @@ func TestGatewaySwapsAuthHeaders(t *testing.T) {
 	}
 	if got := f.lastHeaders.Get("X-Api-Key"); got != "" {
 		t.Errorf("x-api-key forwarded: %q", got)
+	}
+	for _, h := range []string{"X-Evil", "X-Stainless-Lang"} {
+		if got := f.lastHeaders.Get(h); got != "" {
+			t.Errorf("%s forwarded: %q", h, got)
+		}
+	}
+	for _, h := range []string{"Anthropic-Version", "Content-Type"} {
+		if f.lastHeaders.Get(h) != r.Header.Get(h) {
+			t.Errorf("%s not forwarded", h)
+		}
 	}
 	if got := f.lastHeaders.Get("Authorization"); got != "Bearer sk-ant-oat01-jwt-secret-1" {
 		t.Errorf("authorization = %q, want the exchanged token", got)
