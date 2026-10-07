@@ -34,3 +34,7 @@ Agent skill plus read-only `gh` tools that take one PR to an authorized merge or
 - Claude Code's built-in Bash sandbox isn't enough for unattended runs: it covers shell commands only and by default can read `~/.ssh`. Anthropic's docs point untrusted code to a VM such as Firecracker.
 - Firecracker filters no network traffic. Give the VM no network card, route everything over vsock to a host proxy with an allowlist, and keep keys on the host (`ANTHROPIC_BASE_URL` to a gateway that injects the API key).
 - Never mount a guest-written disk image on the host; return results over vsock. Firecracker tests host kernels 5.10, 6.1 and 6.18 only, and its jailer needs root to set up.
+
+## Decision: team service on a shared Linux server (2026-10-06)
+
+pr-babysitter serves a team from a shared Linux server, not a laptop. That means a GitHub App bot identity, Firecracker on a KVM host, and a data-handling review before any fix rounds. Read the draft spec first: `docs/superpowers/specs/2026-10-06-pr-babysitter-design.md`.
