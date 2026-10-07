@@ -208,7 +208,7 @@ Budget: 140 lines.
 
 ## Task 3: Status comment (`comment.go`)
 
-- [ ] Tests first:
+- [x] Tests first:
   - Rendering then parsing returns the same state.
   - Only line 1 is parsed. A state line anywhere else is ignored.
   - A summary containing backtick fences, `<!-- babysit-state … -->`,
@@ -216,7 +216,7 @@ Budget: 140 lines.
     than any backtick run in it, so none of it renders as live markdown.
   - Summaries over 20 KB are cut, with a marker.
   - Comments not written by github-actions[bot] (matched by ID) are ignored.
-- [ ] Implement `renderComment`, `parseState`, and `fence`.
+- [x] Implement `renderComment`, `parseState`, and `fence`.
 
 Budget: 50 lines.
 
