@@ -63,3 +63,17 @@ func TestEnvInputsReportsEveryMissingName(t *testing.T) {
 		t.Errorf("envInputs with arguments = %v, printed %q; want usage", ok, msg)
 	}
 }
+
+func TestRunDispatchesSubcommands(t *testing.T) {
+	for _, k := range []string{"BABYSIT_OUT", "BABYSIT_BOT", "BABYSIT_PORT"} {
+		t.Setenv(k, "")
+	}
+	for _, name := range []string{"prove", "apply", "gateway"} {
+		var top bytes.Buffer
+		var code int
+		msg := stderrOf(t, func() { code = run([]string{name}, &top) })
+		if code != 2 || top.Len() > 0 || !strings.Contains(msg, "usage: pr-babysitter "+name+",") {
+			t.Errorf("run(%q) = %d, printed %q and %q; want 2 and %s's own usage", name, code, top.String(), msg, name)
+		}
+	}
+}
