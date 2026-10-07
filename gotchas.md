@@ -37,4 +37,4 @@ Agent skill plus read-only `gh` tools that take one PR to an authorized merge or
 
 ## Decision: team service on a shared Linux server (2026-10-06)
 
-pr-babysitter serves a team from a shared Linux server, not a laptop. That means a GitHub App bot identity, Firecracker on a KVM host, and a data-handling review before any fix rounds. Read the draft spec first: `docs/superpowers/specs/2026-10-06-pr-babysitter-design.md`.
+pr-babysitter serves a team, not one person's laptop, and needs a GitHub App bot identity. Code, CI logs, and PR text may go to Anthropic's API: this is already approved for Claude Code use (Michelle, 2026-10-07). Read the draft spec first: `docs/superpowers/specs/2026-10-06-pr-babysitter-design.md`. Its v2 (2026-10-07) proposes GitHub Actions instead of our own server, pending approval.
