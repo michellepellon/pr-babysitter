@@ -173,7 +173,7 @@ Write a pure function, `decide(Snapshot) Decision`, together with
 `Decision` is one of skip, needs-human, waiting, round, or ready, with a reason
 and the round's items.
 
-- [ ] Write table tests first: one for each of rules 1–11, plus these:
+- [x] Write table tests first: one for each of rules 1–11, plus these:
   - **Classification:**
     - pass: success, neutral, skipped
     - fail: failure, timed_out, startup_failure, error
@@ -202,7 +202,7 @@ and the round's items.
     as failed.
   - **Rule 8:** the last round didn't push, and no writer has acted since,
     means needs-human.
-- [ ] Implement until the tests pass.
+- [x] Implement until the tests pass.
 
 Budget: 140 lines.
 
