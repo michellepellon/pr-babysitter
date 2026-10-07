@@ -7,9 +7,8 @@ Every run below is in `michellepellon/pr-babysitter-sandbox`, a public repo
 created on 2026-10-07, at `https://github.com/michellepellon/pr-babysitter-sandbox/actions/runs/<id>`.
 The raw responses are in `testdata/task0/`, scanned for secrets before commit.
 
-**Status:** questions 1–5 are answered. Question 6 is answered offline, and the
-runner check waits on question 7. Question 7 fails at the token exchange until
-the federation rule is fixed.
+**Status:** all seven questions are answered. The last section adds a check
+the spec had assumed: what the `agent` user can reach on a hosted runner.
 
 ## 1. Can `GITHUB_TOKEN` read the branch rules?
 
@@ -88,28 +87,67 @@ that records each request and answers 400. Evidence: `q6-offline-bare.json`.
 - **Stdin:** `claude -p` waits for stdin to close when it isn't a terminal. Run
   it with `< /dev/null`.
 
-Still to check on a runner, through the real API: whether Claude Code calls
-anything else after a real response, and whether it tries any address other
-than the gateway. The spike workflow `spike-q67-wif.yml` does both once
-question 7 passes.
+On a runner, Claude Code 2.1.292 ran as `agent` behind the logging proxy, with
+the spec's flags and a two-turn task (run 37673094894, $0.011):
+
+- Both requests were `POST /v1/messages?beta=true`, both answered 200, and the
+  task finished. No token counting, no `HEAD /api/hello`, no other path.
+- The default model was `claude-opus-5-5`.
+- The firewall logged no attempt by `agent` to reach anything but the proxy.
+  A deliberate blocked request afterward logged its DNS packets, so the log
+  rule works and the silence means something.
+- Our Anthropic org is HIPAA-configured and rejects Claude Code's
+  `context_management` field with a 400 (run 37672087512). Claude Code doesn't
+  retry that error, so the run failed. `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`
+  removes the field, leaving these betas: `claude-code-20250219`,
+  `interleaved-thinking-2025-05-14`, `mid-conversation-system-2026-04-07`,
+  `effort-2025-11-24`. The body's fields were then `max_tokens`, `messages`,
+  `metadata`, `model`, `output_config`, `stream`, `system`, `thinking`, and
+  `tools`.
+
+Evidence: `q67-runner-37672087512.txt`, `q67-runner-37673094894.txt`.
 
 ## 7. The WIF chain
 
-Run 37656065511 fetched GitHub's token with the expected claims (`sub` as in
-question 4, `aud` `https://api.anthropic.com`, `ref` `refs/heads/main`). The
-exchange at `POST /v1/oauth/token` returned Anthropic's opaque
-`401 Authentication failed`. The likeliest cause is the federation rule still
-using the `repo:michellepellon/...` subject that the plan first gave. The
-Console's Workload identity History tab records the real reason. No token
-appeared in the public log.
+It works. In run 37673094894 the job fetched GitHub's token, exchanged it at
+`POST /v1/oauth/token` for a Bearer `sk-ant-oat01-` token, and called
+`/v1/messages` with it. Exchanging the same GitHub token a second time got a
+401, so Anthropic's `jti` replay check is on, and every refresh must fetch a
+new GitHub token. No token appeared in any public log.
 
-Anthropic's docs add three facts the design needs:
+What it took to get there:
 
+- The first three runs got Anthropic's opaque `401 Authentication failed`. The
+  Console's Workload identity History tab gave the real reasons. The rule first
+  had the old `repo:michellepellon/...` subject. After that was fixed,
+  `match_claim_absent`: a claim named `refs` instead of `ref`. Claim names must
+  match GitHub's exactly.
 - `subject_prefix` is an exact match unless it ends in `*`.
-- Each GitHub token can be exchanged only once (`jti` replay protection), so
-  every refresh must fetch a new one.
-- `workspace:inference` is the narrowest scope that allows Messages and token
-  counting.
+- The Console offers only the `workspace:developer` scope. Narrowing the rule
+  to `workspace:inference` takes the Admin API
+  (`POST /v1/organizations/federation_rules/{id}`) and an `org:admin` login.
+- Anthropic issued 300-second tokens. The gateway must refresh from
+  `expires_in`, not from an assumed lifetime.
+
+## What the `agent` user can reach on a hosted runner
+
+The spec says setup runs "with no credentials in reach" without saying how.
+On a GitHub-hosted runner (runner 2.337.0):
+
+- `/home/runner` is mode 750, so `agent` can't enter the runner's install
+  directory (`/home/runner/actions-runner`), the workspace, or `_temp`. That is
+  why the spec clones the PR into `agent`'s home.
+- `agent` can't write the Docker socket.
+- A search of the whole disk for credential-shaped files that `agent` can read
+  (`.credentials*`, `.runner`, `*.key`, `.netrc`, `.git-credentials`,
+  `hosts.yml`, `.docker/config.json`) found 15, all test fixtures shipped
+  inside open-source packages under `/usr/share/miniconda/pkgs` and
+  `/usr/lib/google-cloud-sdk`.
+- `agent` can't read the proxy's token file (mode 600, owned by the runner
+  user).
+
+This search matched on file names, so it can miss a secret stored under an
+unusual name.
 
 ## What the spike left behind
 

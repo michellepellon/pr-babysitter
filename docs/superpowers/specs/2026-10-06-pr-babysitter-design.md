@@ -43,7 +43,7 @@ There is no GitHub App and no stored secret:
 | A person approves bot code before merge | Rulesets: dismiss stale approvals, and require approval of the most recent push. plan checks both. |
 | A person approves before CI runs bot code | Pushes made with `GITHUB_TOKEN` create approval-required runs |
 | The bot can't edit workflows | `GITHUB_TOKEN` can't write `.github/workflows`. apply also blocks all of `.github/**`. |
-| Model credential | WIF: a GitHub OIDC token is exchanged for a 10-minute Anthropic token |
+| Model credential | WIF: a GitHub OIDC token is exchanged for an Anthropic token that lasts minutes |
 | Spend cap | A workspace spend limit in Anthropic, plus Claude Code's `--max-budget-usd` |
 | Triggers, one run at a time, timeouts | `schedule`, `workflow_run`, `concurrency`, `timeout-minutes` |
 | A fresh machine per job | GitHub-hosted runners |
@@ -143,6 +143,10 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
    - `ANTHROPIC_BASE_URL`, pointing at the gateway
    - a placeholder `ANTHROPIC_API_KEY`
    - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
+   - `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`. A HIPAA-configured Anthropic
+     org rejects the `context_management` field that Claude Code otherwise
+     sends, and this variable drops it along with Claude Code's other
+     pre-release fields.
 
    Use the flags `-p --bare --setting-sources user --strict-mcp-config
    --permission-mode bypassPermissions --max-turns 100 --max-budget-usd 10
@@ -185,9 +189,10 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
 
 The gateway is a small reverse proxy on 127.0.0.1. It:
 
-- exchanges the job's GitHub OIDC token for a 10-minute Anthropic token, and
-  refreshes it before it expires. Each exchange fetches a fresh GitHub token,
-  because Anthropic accepts each one only once;
+- exchanges the job's GitHub OIDC token for an Anthropic token, and refreshes
+  it before the response's `expires_in` runs out. Anthropic issued 300-second
+  tokens in Task 0. Each exchange fetches a fresh GitHub token, because
+  Anthropic accepts each one only once;
 - forwards only `POST /v1/messages` and `/v1/messages/count_tokens`, matching
   the URL path alone, since Claude Code adds `?beta=true`;
 - rejects any request body that contains `mcp_servers` or `container`, or a tool
@@ -295,7 +300,10 @@ For Anthropic:
 
 - A WIF service account in a workspace that has a spend limit.
 - A federation rule for each repo, with scope `workspace:inference` and a
-  600-second token lifetime. Repos created after 2026-07-15 use GitHub's
+  600-second token lifetime. The Console offers only `workspace:developer`, so
+  set `workspace:inference` afterward through the Admin API
+  (`POST /v1/organizations/federation_rules/{id}`), which needs an `org:admin`
+  login. Repos created after 2026-07-15 use GitHub's
   immutable-ID subject by default, so set `subject_prefix` to exactly
   `repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:babysit`, with no
   trailing `*`, which would make it a prefix match. Add the claims
@@ -368,16 +376,16 @@ and each round adds its own minutes.
      environment's branch policy blocks dispatches from other branches.
    - github-actions[bot] is user ID 41898282. GraphQL reports its login as
      `github-actions`, so match it by ID.
-   - Offline, `claude -p --bare` calls only `POST /v1/messages?beta=true`,
-     with no server tools.
+   - `claude -p --bare` calls only `POST /v1/messages?beta=true`, with no
+     server tools, and on a runner it tried no address but the gateway.
+   - The WIF chain works end to end, and Anthropic rejects a reused GitHub
+     token.
+   - On a hosted runner, `agent` can't reach the runner's files or the Docker
+     socket.
 
    See `docs/superpowers/plans/2026-10-07-task0-findings.md`.
 
    **Still open:**
-   - whether Claude Code calls anything else after a real response, or tries
-     any address but the gateway (Task 0, question 6, on a runner)
-   - the WIF exchange end to end (question 7). The first try got a 401, which
-     points at the federation rule.
    - what the undocumented ruleset field
      `require_extra_approval_for_unattributed_changes: true` does to merging
      bot-pushed commits (test this in Task 9)

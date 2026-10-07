@@ -47,7 +47,7 @@ pr-babysitter serves a team. It runs on GitHub Actions in each pilot repo, with 
 
 - Push the bot's fixes with `GITHUB_TOKEN`. CI runs on those pushes then wait for a writer to approve them, so CI secrets never run unreviewed agent code. App and personal tokens skip that approval.
 - Never interpolate a `${{ }}` holding PR, branch, comment, or agent data into a `run:` script; pass it through `env:`. Branch names may contain `$(...)`. Pin every action and reusable workflow by commit SHA, and set `cache-mode: none`.
-- Get the model credential from Anthropic Workload Identity Federation. Any writer can read a repo's secrets, so don't store keys. Repos created after 2026-07-15 get an immutable-ID subject, `repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:babysit`. A rule's `subject_prefix` matches exactly unless it ends in `*`. Use scope `workspace:inference`.
+- Get the model credential from Anthropic Workload Identity Federation. Any writer can read a repo's secrets, so don't store keys. Repos created after 2026-07-15 get an immutable-ID subject, `repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:babysit`. A rule's `subject_prefix` matches exactly unless it ends in `*`. Claim names must match GitHub's exactly: a rule with `refs` instead of `ref` failed as `match_claim_absent`. Use scope `workspace:inference`; the Console offers only `workspace:developer`, so narrowing takes the Admin API and an `org:admin` login.
 - Each GitHub OIDC token can be exchanged with Anthropic only once (`jti`), so every refresh fetches a new one. Every denial is an opaque `401 Authentication failed`; the Console's Workload identity History tab shows the reason.
 - The model gateway must reject `mcp_servers` and server tools. Otherwise Anthropic's servers can carry repo code to an attacker's URL.
 - Push with `--force-with-lease=<ref>:<round head>`. A plain push succeeds after someone resets the branch, and restores the commits they dropped.
@@ -60,3 +60,6 @@ Evidence and run links: `docs/superpowers/plans/2026-10-07-task0-findings.md`.
 - One push can start two runs of the same check on one SHA. Judge every run.
 - Match github-actions[bot] on user ID 41898282. GraphQL calls it `github-actions`, REST `github-actions[bot]`. Bind required checks to the Actions app (ID 15368), or any status with the same name passes them.
 - `claude -p --bare` still applies the repo's `.claude/settings.json` (a planted `model` took effect). Add `--setting-sources user --strict-mcp-config`. It calls `POST /v1/messages?beta=true`, so match the gateway's allowlist on the URL path. Run it with `< /dev/null`, or it waits for stdin.
+- Our Anthropic org is HIPAA-configured and rejects Claude Code's `context_management` field with a 400 that Claude Code doesn't retry. Set `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
+- Anthropic issued 300-second tokens in Task 0. Refresh from `expires_in`, not from the rule's configured lifetime.
+- On GitHub-hosted runners `/home/runner` is mode 750, so a separate `agent` user can't reach the runner's files, the workspace, or the Docker socket. Clone the PR into `agent`'s home.

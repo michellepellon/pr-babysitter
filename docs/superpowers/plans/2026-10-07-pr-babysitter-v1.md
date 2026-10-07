@@ -86,7 +86,9 @@ to the org later.
       immutable-ID subject, so `repo:michellepellon/...` never matches.
     - audience `https://api.anthropic.com`
     - claims `repository_owner: michellepellon` and `ref: refs/heads/main`
-    - scope `workspace:inference`
+    - scope `workspace:inference`. The Console offers only
+      `workspace:developer`, so the rule starts there. Narrow it through the
+      Admin API before the pilot reaches work repos.
     - a 600-second token lifetime
 - **After the move to the org:** transfer both repos, then update the module
   path, every caller's `uses:` line, and the federation rule's repository and
@@ -97,11 +99,8 @@ to the org later.
 This spike is throwaway: a scratch workflow in the sandbox repo, and none of it
 ships. Its job is to settle spec §10.2 before any code depends on it.
 
-**Status (2026-10-07):** questions 1–5 are answered, and question 6 is
-answered offline. See `2026-10-07-task0-findings.md` and `testdata/task0/`.
-Question 7's first run got a 401 from the token exchange, which points at the
-federation rule. The sandbox's `spike-q67-wif.yml` reruns questions 6 and 7
-together.
+**Status (2026-10-07):** done. All seven questions are answered; see
+`2026-10-07-task0-findings.md` and `testdata/task0/`.
 
 - [ ] Run a scratch workflow in the sandbox repo that records:
   1. Whether `GITHUB_TOKEN` can read
@@ -271,6 +270,8 @@ Budget: 130 lines.
     whose `type` isn't empty or `custom`.
   - It removes incoming `x-api-key` and `authorization` headers and sets its
     own bearer token.
+  - A request shaped like Claude Code's in Task 0 passes: the body fields and
+    betas in `testdata/task0/q67-runner-37673094894.txt`.
   - The 401st request in a round is refused.
 - [ ] Integration tests, with `httptest` servers standing in for GitHub's OIDC
   endpoint and for Anthropic's token and messages endpoints:
@@ -321,8 +322,8 @@ Budget: 130 lines, including the GraphQL query.
   - after setup, add iptables and ip6tables OUTPUT rules for the `agent` user
     that accept traffic to 127.0.0.1 on the gateway's port and drop everything
     else, DNS and ICMP included.
-- [ ] Run Claude Code with the spec's flags and `< /dev/null`: `claude -p`
-  otherwise waits for stdin to close.
+- [ ] Run Claude Code with the spec's flags and variables, and `< /dev/null`:
+  `claude -p` otherwise waits for stdin to close.
 - [ ] Write `prompt.md` by adapting shepherd-pr's "Triage and verify" section,
   keeping its MIT notice. Add:
   - the trailer format;
