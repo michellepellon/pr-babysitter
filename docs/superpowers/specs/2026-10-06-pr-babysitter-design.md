@@ -132,13 +132,18 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
    run the repo's `setup_command`. Only code a person has approved gets here:
    - the first round runs the human's own head;
    - every later head ran CI only after a person approved it (rule 5).
-4. **Close the network.** iptables and ip6tables rules drop all of `agent`'s
-   traffic, DNS and ICMP included, except connections to the gateway's port on
-   127.0.0.1.
+4. **Close the network.** From here on, `agent`'s commands run in their own
+   network namespace, joined to the host by a veth pair, with private `/run`
+   and `/tmp`. iptables and ip6tables rules there refuse all of `agent`'s
+   traffic, DNS and ICMP included, except its own loopback and connections to
+   the gateway on the host's end of the pair. The namespace and mounts also
+   hide the unix sockets of root daemons (D-Bus, systemd-resolved, snapd),
+   which would otherwise reach the network for `agent`; a runner probe on
+   2026-10-08 showed that they do.
 5. **Start the gateway.** As `gateway`, start the model gateway (described
    below), passing it the job's OIDC request variables.
-6. **Run Claude Code.** As `agent`, run Claude Code under `env -i`, so it sees
-   only these variables:
+6. **Run Claude Code.** As `agent`, in its namespace, run Claude Code under
+   `env -i`, so it sees only these variables:
    - `HOME` and `PATH`
    - `ANTHROPIC_BASE_URL`, pointing at the gateway
    - a placeholder `ANTHROPIC_API_KEY`
@@ -171,7 +176,7 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
      person must decide something.
 7. **Prove the fixes.** Kill every `agent` process first. Our program drives the
    proofs from the runner user, but every git and proof command runs as
-   `agent`, passed as an argument list with no shell: either
+   `agent` in its namespace, passed as an argument list with no shell: either
    `test_command <selector>` or `lint_command`. Each command is split on
    whitespace, with no quoting, and the selector is one more argument.
    - Selectors must match `^[A-Za-z0-9_./:\[\]-]{1,200}$`.
@@ -188,7 +193,8 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
 
 ### The model gateway
 
-The gateway is a small reverse proxy on 127.0.0.1. It:
+The gateway is a small reverse proxy on the host's end of `agent`'s veth
+pair. It:
 
 - exchanges the job's GitHub OIDC token for an Anthropic token, and refreshes
   it before the response's `expires_in` runs out. Anthropic issued 300-second

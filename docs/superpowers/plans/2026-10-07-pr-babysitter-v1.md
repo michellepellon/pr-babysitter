@@ -17,19 +17,19 @@ it in dry-run mode.
 - **State:** Tasks 0–8 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
   Task 7 in PR #4, and Task 8 in PR #5. Task 9 is under way on branch
   `wip/task9-e2e`.
-- **Next:** Task 9, starting with the runner probe under "Open". Then confirm
-  each item in "Notes from Task 8" on a runner.
+- **Next:** confirm each item in "Notes from Task 8" on a runner, then write
+  the e2e scenarios.
 - **Compactions:** none in the session running Task 9.
 - **Size:** 1,129 of 1,150. Task 8 added 47 lines of Go for apply's outcome
-  recording.
-- **Open, both blocking the pilot:**
+  recording; the sandbox fix left the count unchanged.
+- **Open, blocking the pilot:**
   - Narrow the federation rule to `workspace:inference` (see "Before Task 0").
-  - The agent may reach the network through local services: systemd-resolved
-    over D-Bus or varlink, and snapd if present. iptables filters only its
-    packets. Michelle decided on 2026-10-08 to merge Task 8 and start Task 9
-    with a runner probe (`resolvectl`, `busctl`, `snap find`, all as `agent`
-    with the network closed). Fix whatever the probe shows before any pilot
-    repo runs a round, and keep the fix as a Task 9 test.
+- **Fixed on 2026-10-08:** the runner probe showed agent reaching the network
+  through systemd-resolved (D-Bus and varlink) and snapd. Michelle approved
+  the fix: `sandbox.sh run` puts every agent command after setup in its own
+  network namespace, with private `/run` and `/tmp`, and the gateway listens
+  on the host's end of a veth pair. `e2e/confinement.sh`, run by check.yml's
+  `sandbox` job, keeps it fixed; a mutation without the namespaces fails it.
 
 **Architecture:**
 - Three jobs (plan, work, apply) in one reusable GitHub Actions workflow.
