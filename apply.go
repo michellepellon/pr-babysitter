@@ -30,10 +30,6 @@ type applyInput struct {
 var builtinProtected = []string{".github/", ".devcontainer/", ".claude/", ".gitattributes", ".gitmodules",
 	"CODEOWNERS", "CLAUDE.md", "AGENTS.md", ".roborev.toml", "REVIEW.md"}
 
-// rereadPR must confirm the PR is still open, not from a fork, labeled by a
-// writer, and on head. github.go supplies it; until then apply fails closed.
-var rereadPR = func(pr, head string) error { return errors.New("PR re-read is not wired to GitHub") }
-
 var (
 	prNumberRE = regexp.MustCompile(`^[1-9][0-9]{0,9}$`)
 	shaRE      = regexp.MustCompile(`^[0-9a-f]{40}$`)
