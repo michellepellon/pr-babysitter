@@ -17,8 +17,9 @@ it in dry-run mode.
 - **State:** Tasks 0–8 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
   Task 7 in PR #4, and Task 8 in PR #5. Task 9 is under way on branch
   `wip/task9-e2e`.
-- **Next:** confirm each item in "Notes from Task 8" on a runner, then write
-  the e2e scenarios.
+- **Next:** the `babysit.yml` runs listed under Task 9's "Runner evidence",
+  then the e2e scenarios. Both need Michelle's OK first: a caller on the
+  sandbox's main, and any run that spends model budget.
 - **Compactions:** none in the session running Task 9.
 - **Size:** 1,129 of 1,150. Task 8 added 47 lines of Go for apply's outcome
   recording; the sandbox fix left the count unchanged.
@@ -547,6 +548,30 @@ The sandbox has only one maintainer, and its ruleset requires approval from
 someone other than the last pusher. So for any test that needs a merge, use a
 second GitHub account or the admin bypass. Use scenario 1 to test what
 `require_extra_approval_for_unattributed_changes` does.
+
+**Runner evidence for "Notes from Task 8" (2026-10-08):**
+- **Confirmed by check.yml's `sandbox` job** (`e2e/confinement.sh`, run
+  37861459110):
+  - prove's group kill works through `sudo` and `sandbox.sh run`;
+  - agent reaches the gateway and its own loopback, and nothing else: no DNS,
+    no ICMP, no IPv6, none of the host's other ports, and none of the host's
+    40 listening unix sockets;
+  - the gateway, started with `&`, keeps serving into later steps;
+  - `sudo --preserve-env` hands the OIDC request token to the gateway, and
+    agent can't read it from any process's command line or environment;
+  - `uses: $/` builds the action, `go-version-file` included, in a workflow
+    that isn't called from another repo.
+- **Found and fixed:** a step timeout doesn't reach agent's processes through
+  sudo (sandbox run 37861084588: both `sleep`s survived). A timed-out Claude
+  Code step skipped prove, the only step that killed them, so work now kills
+  them in an `if: always()` step right after Claude Code.
+- **Still needs a `babysit.yml` run in the sandbox:** Claude Code through the
+  gateway's header list (spends model budget); `job.workflow_*` in all three
+  jobs, and what `$/` resolves to in a called workflow; checkout v7 with a PR
+  head SHA under `schedule` and `workflow_run`; apply's GraphQL re-read with
+  and without `checks: read` and `statuses: read`; the collaborator lookup
+  with each job's token; `cache-mode: none` at the top of the caller and
+  `babysit.yml`.
 
 ## Task 10: README and pilot
 
