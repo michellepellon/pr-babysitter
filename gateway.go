@@ -1,4 +1,4 @@
-// ABOUTME: The model gateway: a reverse proxy on 127.0.0.1 that gives the agent the Messages API
+// ABOUTME: The model gateway: a reverse proxy, the agent's only way out, that gives it the Messages API
 // ABOUTME: through a WIF token it never sees, forwarding only bodies that pass an allowlist (spec §4).
 
 package main
@@ -13,9 +13,9 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"net/url"
 	"os"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -205,22 +205,23 @@ func callJSON(step string, req *http.Request, out any) error {
 	return nil
 }
 
-// cmdGateway runs the gateway on 127.0.0.1:$BABYSIT_PORT until it fails.
+// cmdGateway runs the gateway on $BABYSIT_GATEWAY, the host's end of agent's
+// veth pair (see sandbox.sh), until it fails.
 func cmdGateway(args []string) int {
-	env, ok := envInputs("gateway", args, []string{"BABYSIT_PORT", "ACTIONS_ID_TOKEN_REQUEST_URL",
+	env, ok := envInputs("gateway", args, []string{"BABYSIT_GATEWAY", "ACTIONS_ID_TOKEN_REQUEST_URL",
 		"ACTIONS_ID_TOKEN_REQUEST_TOKEN", "FEDERATION_RULE_ID", "ORGANIZATION_ID", "SERVICE_ACCOUNT_ID", "WORKSPACE_ID"})
 	if !ok {
 		return 2
 	}
-	port, err := strconv.Atoi(env["BABYSIT_PORT"])
-	if err != nil || port <= 0 {
-		fmt.Fprintln(os.Stderr, "gateway: BABYSIT_PORT must be a port number")
+	addr, err := netip.ParseAddrPort(env["BABYSIT_GATEWAY"])
+	if err != nil || addr.Port() == 0 {
+		fmt.Fprintln(os.Stderr, "gateway: BABYSIT_GATEWAY must be an IP address and port")
 		return 2
 	}
 	upstream, _ := url.Parse("https://api.anthropic.com")
 	g := newGateway(upstream, env["ACTIONS_ID_TOKEN_REQUEST_URL"], env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"], map[string]string{
 		"federation_rule_id": env["FEDERATION_RULE_ID"], "organization_id": env["ORGANIZATION_ID"],
 		"service_account_id": env["SERVICE_ACCOUNT_ID"], "workspace_id": env["WORKSPACE_ID"]}, os.Stderr)
-	fmt.Fprintln(os.Stderr, "gateway:", http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", port), g))
+	fmt.Fprintln(os.Stderr, "gateway:", http.ListenAndServe(addr.String(), g))
 	return 1
 }

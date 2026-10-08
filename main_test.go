@@ -65,7 +65,7 @@ func TestEnvInputsReportsEveryMissingName(t *testing.T) {
 }
 
 func TestRunDispatchesSubcommands(t *testing.T) {
-	for _, k := range []string{"BABYSIT_OUT", "BABYSIT_BOT", "BABYSIT_PORT"} {
+	for _, k := range []string{"BABYSIT_OUT", "BABYSIT_BOT", "BABYSIT_GATEWAY"} {
 		t.Setenv(k, "")
 	}
 	for _, name := range []string{"prove", "apply", "gateway"} {

@@ -25,3 +25,32 @@ jobs:
         with:
           enable-cache: false
       - run: make check
+
+  # Checks agent's sandbox on a real runner: everything but the model, so it needs no secrets.
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BABYSIT_GATEWAY: 10.199.0.1:8199
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/
+      - run: |
+          mkdir "$RUNNER_TEMP/items"
+          sudo env PATH="$PATH" pr-babysitter-sandbox setup "$GITHUB_WORKSPACE" "$RUNNER_TEMP/items"
+      - run: sudo pr-babysitter-sandbox close "$BABYSIT_GATEWAY"
+      # The OIDC values are placeholders: the gateway asks for a token only when it forwards a request.
+      - env:
+          ACTIONS_ID_TOKEN_REQUEST_URL: http://127.0.0.1:1/
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: placeholder
+          FEDERATION_RULE_ID: placeholder
+          ORGANIZATION_ID: placeholder
+          SERVICE_ACCOUNT_ID: placeholder
+          WORKSPACE_ID: placeholder
+        run: |
+          sudo --preserve-env=BABYSIT_GATEWAY,ACTIONS_ID_TOKEN_REQUEST_URL,ACTIONS_ID_TOKEN_REQUEST_TOKEN,FEDERATION_RULE_ID,ORGANIZATION_ID,SERVICE_ACCOUNT_ID,WORKSPACE_ID \
+            -u gateway /usr/local/bin/pr-babysitter gateway &
+          timeout 30 bash -c 'until curl -s -o /dev/null "http://$BABYSIT_GATEWAY/"; do sleep 1; done'
+      - run: e2e/confinement.sh "$BABYSIT_GATEWAY"

@@ -3,7 +3,7 @@
 
 ZIZMOR ?= uvx zizmor@1.30.1
 YAML := $(wildcard .github/workflows/*.yml examples/*.yml action.yml)
-SHELL_SCRIPTS := $(wildcard sandbox.sh)
+SHELL_SCRIPTS := $(wildcard sandbox.sh e2e/*.sh)
 
 .PHONY: check e2e
 

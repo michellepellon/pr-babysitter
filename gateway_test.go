@@ -432,13 +432,14 @@ func TestCmdGatewayNeedsItsEnvironment(t *testing.T) {
 		"FEDERATION_RULE_ID", "ORGANIZATION_ID", "SERVICE_ACCOUNT_ID", "WORKSPACE_ID"} {
 		t.Setenv(k, "x")
 	}
-	for _, port := range []string{"", "0", "-1", "x", "8080x"} {
-		t.Setenv("BABYSIT_PORT", port)
+	// An empty or named host would listen on every interface, or wherever the name resolves.
+	for _, addr := range []string{"", "8199", ":8199", "localhost:8199", "10.199.0.1", "10.199.0.1:0", "10.199.0.1:x"} {
+		t.Setenv("BABYSIT_GATEWAY", addr)
 		if code := cmdGateway(nil); code != 2 {
-			t.Errorf("BABYSIT_PORT=%q: exit %d, want 2", port, code)
+			t.Errorf("BABYSIT_GATEWAY=%q: exit %d, want 2", addr, code)
 		}
 	}
-	t.Setenv("BABYSIT_PORT", "1")
+	t.Setenv("BABYSIT_GATEWAY", "10.199.0.1:1")
 	t.Setenv("WORKSPACE_ID", "")
 	if msg := stderrOf(t, func() { cmdGateway(nil) }); !strings.Contains(msg, "missing WORKSPACE_ID") {
 		t.Errorf("printed %q, want missing WORKSPACE_ID", msg)
