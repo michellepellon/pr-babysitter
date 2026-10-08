@@ -44,7 +44,7 @@ jobs:
       # The OIDC values are placeholders: the gateway asks for a token only when it forwards a request.
       - env:
           ACTIONS_ID_TOKEN_REQUEST_URL: http://127.0.0.1:1/
-          ACTIONS_ID_TOKEN_REQUEST_TOKEN: placeholder
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: oidc-request-token-sentinel # e2e/confinement.sh looks for it
           FEDERATION_RULE_ID: placeholder
           ORGANIZATION_ID: placeholder
           SERVICE_ACCOUNT_ID: placeholder

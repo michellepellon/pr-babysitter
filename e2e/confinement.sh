@@ -52,6 +52,7 @@ blocked "DNS to 1.1.1.1" dig @1.1.1.1 +time=3 +tries=1 "$(leak_name f)"
 blocked "HTTPS to 1.1.1.1" curl -sS -m 5 https://1.1.1.1/
 blocked "snap store search" snap find hello
 blocked "ICMP" ping -c1 -W3 1.1.1.1
+blocked "IPv6" curl -sS -m 5 "https://[2606:4700:4700::1111]/"
 blocked "the host's other ports" curl -sS -m 5 "http://${gateway%:*}:22/"
 
 # Every unix socket listening on the host: root daemons behind them act for whoever connects.
@@ -84,6 +85,17 @@ allowed "agent sees only HOME and PATH" "$(printf 'HOME=/home/agent\nPATH=%s' "$
 allowed "agent runs as itself, with no other groups" "$(id -u agent) $(id -g agent)" sh -c 'echo "$(id -u) $(id -G)"'
 allowed "commands start in the caller's directory" /home/agent/repo pwd
 allowed "Claude Code starts" ok sh -c '/home/agent/cc/node_modules/.bin/claude --version >/dev/null && echo ok'
+
+# The gateway holds the OIDC request token (check.yml sets it to $oidc_sentinel)
+# through sudo --preserve-env, so no command line carries it for agent to read.
+oidc_sentinel=oidc-request-token-sentinel
+gateway_pid=$(pgrep -u gateway -x pr-babysitter)
+if sudo grep -qa "$oidc_sentinel" "/proc/$gateway_pid/environ"; then ok "the gateway holds the OIDC request token"; else bad "the gateway holds the OIDC request token"; fi
+# The sentinel goes in two pieces, so this check's own command line doesn't hold it.
+# shellcheck disable=SC2016 # expands as agent
+blocked "reading the OIDC request token from any process" sh -c \
+  'for f in /proc/[0-9]*/cmdline /proc/[0-9]*/environ; do cat "$f" 2>/dev/null; done | grep -qa "$0$1"' \
+  "${oidc_sentinel%-*}" "-${oidc_sentinel##*-}"
 
 # prove's timeout kills the proof's process group as agent, through the same wrapper.
 set -m
