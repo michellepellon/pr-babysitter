@@ -23,8 +23,14 @@ it in dry-run mode.
 - **Compactions:** none in the session that ran Task 8.
 - **Size:** 1,129 of 1,150. Task 8 added 47 lines of Go for apply's outcome
   recording.
-- **Open:** narrowing the federation rule to `workspace:inference` (see
-  "Before Task 0") must happen before the pilot reaches work repos.
+- **Open, both blocking the pilot:**
+  - Narrow the federation rule to `workspace:inference` (see "Before Task 0").
+  - The agent may reach the network through local services: systemd-resolved
+    over D-Bus or varlink, and snapd if present. iptables filters only its
+    packets. Michelle decided on 2026-10-08 to merge Task 8 and start Task 9
+    with a runner probe (`resolvectl`, `busctl`, `snap find`, all as `agent`
+    with the network closed). Fix whatever the probe shows before any pilot
+    repo runs a round, and keep the fix as a Task 9 test.
 
 **Architecture:**
 - Three jobs (plan, work, apply) in one reusable GitHub Actions workflow.
