@@ -90,3 +90,12 @@ Evidence and run links: `docs/superpowers/plans/2026-10-07-task0-findings.md`.
 - Every user can read every process's command line under `/proc`. Pass secrets to `sudo -u` with `--preserve-env=NAME,...`, never as `env NAME=value` arguments: sudo stays alive as the parent with its arguments visible.
 - `gh auth setup-git` works with only `GH_TOKEN` set (no `gh auth login`), so apply can push after a `persist-credentials: false` checkout.
 - `git bundle create - HEAD ^<base>` works in a depth-1 clone when `<base>` is the shallow tip.
+
+## Runner probe: local services leak the network (2026-10-08)
+
+Runs 37858608647 and 37858943131 in pr-babysitter-sandbox, branch `probe/local-services`.
+
+- With `sandbox.sh close` in place, agent still resolved `p<nonce>-10-11-12-13.nip.io` to 10.11.12.13 through `resolvectl`, `busctl` (org.freedesktop.resolve1), and varlink (`/run/systemd/resolve/io.systemd.Resolve`), and `snap find` searched the store. Owner-match iptables rules filter agent's packets, not what root daemons do for it over unix sockets.
+- The system bus also offers agent PackageKit, fwupd, ModemManager, UDisks2, netplan, and networkd, so a socket denylist won't hold. Listening sockets agent could connect to: the D-Bus system bus, resolved's varlink socket, snapd's two sockets, journald's stdout, userdb, ManagedOOM, uuidd, and the abstract sockets of multipathd and iscsid.
+- A network namespace plus private tmpfs over `/run` and `/tmp` closed all of these, while agent kept its own loopback and reached a listener on the host side of a veth pair. Killing a process group through `sudo` and `ip netns exec` still worked.
+- Hosted runners (kernel 6.17, systemd 255) have `unshare`, `setpriv`, and `ip netns`, but no `bwrap`. `kernel.apparmor_restrict_unprivileged_userns` is 1.
