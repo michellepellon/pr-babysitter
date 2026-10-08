@@ -1,0 +1,16 @@
+# ABOUTME: Composite action that builds pr-babysitter from this action's own commit and installs it on PATH.
+# ABOUTME: babysit.yml checks this repo out at its own workflow SHA, runs this, then calls pr-babysitter in steps.
+
+name: pr-babysitter
+description: Build pr-babysitter and install it as /usr/local/bin/pr-babysitter, where the gateway user can run it.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+        cache: false
+    - shell: bash
+      run: |
+        go build -C "$GITHUB_ACTION_PATH" -o "$RUNNER_TEMP/pr-babysitter" .
+        sudo install -m 755 "$RUNNER_TEMP/pr-babysitter" /usr/local/bin/pr-babysitter
