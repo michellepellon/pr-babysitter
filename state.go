@@ -32,6 +32,12 @@ type Snapshot struct {
 	ReviewerBots                                   []int64 // user IDs from the reviewer_bots input
 	State                                          State
 	Now                                            time.Time
+	// Not read by decide: for plan's comments, items, and outputs.
+	Number       int
+	Branch, Base string
+	LabelAt      time.Time
+	CommentID    int64  // the status comment, or 0
+	Comment      string // its body
 }
 
 // Actor is a GitHub user, identified by ID; Login is only for @mentions.
@@ -47,6 +53,7 @@ type Check struct {
 	Name       string `json:"name"`
 	Status     string `json:"status"`
 	Conclusion string `json:"conclusion"`
+	Run        int64  `json:"run,omitempty"` // workflow run ID, for its failed-job log
 }
 
 // Suite is one check suite from the REST API.

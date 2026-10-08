@@ -74,3 +74,10 @@ Evidence and run links: `docs/superpowers/plans/2026-10-07-task0-findings.md`.
 - A lease that names an explicit SHA ignores the clone's tracking refs, so it holds even when apply's clone is stale. `git fetch <bundle> <sha>` keeps the bundle's attacker-chosen ref name away from git.
 - The runner user can't signal `agent`'s processes (EPERM); kill them with `sudo -u agent kill -KILL -- -<pgid>`. Set `WaitDelay` on commands whose output is captured, or a process that leaves the group and keeps the pipe open hangs `Wait`.
 - Test repos need `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, so a developer's own git settings, such as commit signing, don't break test commits.
+
+## Build notes from Task 7 (2026-10-07)
+
+- Pass strings to `gh api` with `-f`, not `-F`. `-F` turns a value starting with `@` into a file's contents, and `true` or a number into JSON types.
+- With `--paginate`, add `--jq '.[]'` (or `'.check_suites[]'`) and decode the output as a stream of JSON values. That avoids relying on how gh joins pages. Don't use `--jq` to pick a string field: gh prints strings bare, not as JSON.
+- gh replaces `{owner}`, `{repo}`, and `{branch}` in an endpoint. Path-escape any GitHub-supplied path segment (plan escapes the base branch) so braces in a branch name stay literal.
+- Re-record `testdata/plan/graphql-prs.json` whenever `prQuery` changes. The decode tests caught an alias rename only because the fixture came from the real query. Sandbox PR #1 carries the `babysit` label for this.

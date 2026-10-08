@@ -14,13 +14,14 @@
 it in dry-run mode.
 
 **Progress (2026-10-07):**
-- **State:** Tasks 0–6 are done. Task 1 merged in PR #2. Tasks 2–6 ran as
-  parallel subagents and are merged and wired into `main.go` on branch
-  `wip/tasks2-6`. The subcommands now read inputs from the environment.
-- **Next:** Task 7, then Task 8. Read the notes under each first.
-- **Compactions:** none in the session that ran Tasks 1–6.
-- **Size:** every task in 2–6 ran over its budget. Michelle raised the ceiling
-  to 900 on 2026-10-07 (see "Rules for every task").
+- **State:** Tasks 0–7 are done. Tasks 1 and 2–6 merged in PRs #2 and #3.
+  Task 7 (`github.go`, the `plan` subcommand, apply's real PR re-read) is on
+  branch `wip/task7-github`.
+- **Next:** Task 8. Read the notes under Tasks 7 and 8 first.
+- **Compactions:** none in the session that ran Task 7.
+- **Size:** 1,082 of 1,150. Every task from 2 to 7 ran over its budget.
+  Michelle raised the ceiling to 1,150 on 2026-10-07 (see "Rules for every
+  task"), which leaves about 65 lines for Task 8's Go.
 - **Open:** narrowing the federation rule to `workspace:inference` (see
   "Before Task 0") must happen before the pilot reaches work repos.
 
@@ -37,12 +38,16 @@ it in dry-run mode.
   Michelle's OK first.
 - **One package, `main`,** with one file per concern. Each file starts with two
   `ABOUTME:` lines.
-- **Size budget:** a hard ceiling of 900 lines of non-test Go, counting only
+- **Size budget:** a hard ceiling of 1,150 lines of non-test Go, counting only
   lines that aren't blank or comments (`grep -cvE '^\s*(//|$)'`). A task that
   needs more than its budget stops and explains why before committing.
   Michelle raised the ceiling from 800 on 2026-10-07: Tasks 2–6 came in at
   749 lines against 525 budgeted, after the subcommands moved to env inputs, mostly from fail-closed checks and
-  command-line glue that the budgets didn't count.
+  command-line glue that the budgets didn't count. She raised it again, to
+  1,150, when Task 7 came in at 328 lines against 130: the budget left out
+  about 50 lines of GraphQL response types (gofmt gives each field of a
+  multi-field struct its own line) and the REST decoders for rules, check
+  suites, comments, and permissions.
 - **Write the test before the code** for every behavior.
   - Unit and integration tests run offline.
   - End-to-end tests use real GitHub, real runners, WIF, and the real model,
@@ -314,18 +319,18 @@ Budget: 125 lines, including about 15 for the walk over `source` objects.
 
 ## Task 7: GitHub calls and `plan` (`github.go`)
 
-- [ ] Decode tests first, using Task 0's recorded responses. Map:
+- [x] Decode tests first, using Task 0's recorded responses. Map:
   - the GraphQL response to a `Snapshot`;
   - the rules endpoint to its three flags;
   - collaborator role names to writer, meaning `admin`, `maintain`, or `write`;
   - issue events to the latest `babysit` label event and its actor.
-- [ ] Write thin wrappers around `gh api graphql -F`, always passing values as
+- [x] Write thin wrappers around `gh api graphql -F`, always passing values as
   variables, and `gh api`, with `--paginate` where needed. Also read the head's
   check suites (`GET /repos/{o}/{r}/commits/{sha}/check-suites`), because CI
   waiting for approval appears only there. Use
   `gh run view --log-failed` to get each failed job's log, keeping at most the
   last 200 KB.
-- [ ] Write `plan`. In order, it:
+- [x] Write `plan`. In order, it:
   - reads up to 20 labeled PRs and decides each one;
   - edits status comments only when the text changes;
   - picks the qualifying PR whose label is oldest;
@@ -333,7 +338,7 @@ Budget: 125 lines, including about 15 for the walk over `source` objects.
     `running`) before emitting anything;
   - writes the items to the artifact folder;
   - writes the validated PR number, head, and branch to `$GITHUB_OUTPUT`.
-- [ ] Look up each user's writer status once per run.
+- [x] Look up each user's writer status once per run.
 
 Budget: 130 lines, including the GraphQL query.
 
@@ -354,6 +359,27 @@ Budget: 130 lines, including the GraphQL query.
   mention works. Never put check names, PR text, or agent text in it.
 - Replace apply's `rereadPR` function variable with the real re-read. Until
   then it fails closed.
+
+**Notes from Task 7 (2026-10-07), for Task 8:**
+- plan's inputs: `GITHUB_REPOSITORY`, `GITHUB_OUTPUT`, `BABYSIT_ITEMS` (the
+  artifact folder), optional `BABYSIT_REVIEWER_BOTS` (user IDs), and
+  `GH_TOKEN` for gh. Its outputs are `pr`, `head`, and `branch`.
+- The items folder holds `items.json` (PR, head, branch, and the decision:
+  failed checks, feedback items, state) and `logs/<run ID>.log`, the last
+  200 KB of each failed run's `gh run view --log-failed`.
+- apply's re-read calls the same GraphQL query, so the apply step needs
+  `GITHUB_REPOSITORY` and `GH_TOKEN` in its environment.
+- The status comment's fenced block holds the reason on its first line, a
+  blank line, then the round summary. plan keeps whatever follows that blank
+  line. Whatever records apply's outcome must write the same layout: the
+  outcome as line one, then `summary.md`. `commentBody` keeps the old
+  summary, so the outcome writer passes the new one to `renderComment`
+  itself.
+- The label event comes from GraphQL `timelineItems`, not REST issue events, so
+  each PR still costs one query.
+- Contexts, threads, comments per thread, and reviews stop at 100 with no
+  warning. Task 9 should confirm that the rollup lists both runs when one push
+  starts the same check twice.
 
 ## Task 8: Workflow, action, sandbox, prompt
 

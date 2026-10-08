@@ -12,7 +12,7 @@ import (
 
 // commands maps each subcommand name to its handler, which gets the remaining
 // arguments and returns the exit code.
-var commands = map[string]func(args []string) int{"prove": cmdProve, "apply": cmdApply, "gateway": cmdGateway}
+var commands = map[string]func(args []string) int{"plan": cmdPlan, "prove": cmdProve, "apply": cmdApply, "gateway": cmdGateway}
 
 func run(args []string, stderr io.Writer) int {
 	if len(args) > 0 {
