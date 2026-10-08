@@ -214,17 +214,35 @@ func loadPR(repo string, p ghPR, bots []int64, now time.Time) (Snapshot, error) 
 	}
 	var comments []ghIssueComment
 	if err == nil {
-		comments, err = ghJSON[ghIssueComment]("api", fmt.Sprintf("repos/%s/issues/%d/comments", repo, s.Number), "--paginate", "--jq", ".[]")
+		comments, err = issueComments(repo, strconv.Itoa(s.Number))
 	}
-	for _, c := range comments {
-		if st, ok := parseState(c.User.ID, c.Body); ok && s.CommentID == 0 {
-			s.State, s.CommentID, s.Comment = st, c.ID, c.Body
+	i, st := statusComment(comments)
+	if i >= 0 {
+		s.State, s.CommentID, s.Comment = st, comments[i].ID, comments[i].Body
+	}
+	for j, c := range comments {
+		if j == i {
 			continue
 		}
 		a := toActor(repo, ghActor{Type: c.User.Type, Login: c.User.Login, ID: c.User.ID})
 		s.Feedback = append(s.Feedback, Feedback{Kind: "comment", Author: a, Body: c.Body, CreatedAt: c.CreatedAt})
 	}
 	return s, err
+}
+
+func issueComments(repo, pr string) ([]ghIssueComment, error) {
+	return ghJSON[ghIssueComment]("api", "repos/"+repo+"/issues/"+pr+"/comments", "--paginate", "--jq", ".[]")
+}
+
+// statusComment finds the status comment: the first by github-actions[bot] whose line 1 is a
+// state line. It returns -1 if there is none.
+func statusComment(comments []ghIssueComment) (int, State) {
+	for i, c := range comments {
+		if st, ok := parseState(c.User.ID, c.Body); ok {
+			return i, st
+		}
+	}
+	return -1, State{}
 }
 
 // commentBody renders the status comment, keeping old's round summary. The fenced block holds

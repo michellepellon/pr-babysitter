@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type applyInput struct {
@@ -42,22 +43,59 @@ var (
 // BABYSIT_BOT identity, "name <email>". BABYSIT_DIR is a clone whose origin is
 // the PR's repo (default "."), and BABYSIT_PROTECTED_PATHS adds whitespace-
 // separated paths to the built-in list. Only BABYSIT_DRY_RUN=false pushes.
+// It applies the round only if BABYSIT_WORK_RESULT is success, then always
+// records the outcome and work's BABYSIT_SUMMARY in GITHUB_REPOSITORY's PR.
 func cmdApply(args []string) int {
-	env, ok := envInputs("apply", args, []string{"BABYSIT_PR", "BABYSIT_HEAD", "BABYSIT_BRANCH",
-		"BABYSIT_BUNDLE", "BABYSIT_PROOFS", "BABYSIT_BOT"}, "BABYSIT_DIR", "BABYSIT_PROTECTED_PATHS", "BABYSIT_DRY_RUN")
+	env, ok := envInputs("apply", args, []string{"GITHUB_REPOSITORY", "BABYSIT_PR", "BABYSIT_HEAD", "BABYSIT_BRANCH",
+		"BABYSIT_BUNDLE", "BABYSIT_PROOFS", "BABYSIT_BOT", "BABYSIT_WORK_RESULT"},
+		"BABYSIT_DIR", "BABYSIT_PROTECTED_PATHS", "BABYSIT_DRY_RUN", "BABYSIT_SUMMARY")
 	if !ok {
 		return 2
 	}
-	out, err := apply(applyInput{dir: cmp.Or(env["BABYSIT_DIR"], "."), pr: env["BABYSIT_PR"], head: env["BABYSIT_HEAD"],
-		branch: env["BABYSIT_BRANCH"], bundle: env["BABYSIT_BUNDLE"], proofs: env["BABYSIT_PROOFS"], bot: env["BABYSIT_BOT"],
-		protected: slices.Concat(builtinProtected, strings.Fields(env["BABYSIT_PROTECTED_PATHS"])),
-		dryRun:    env["BABYSIT_DRY_RUN"] != "false", rereadPR: rereadPR})
+	out, pushed, err := "", "", fmt.Errorf("failed: work ended %s", env["BABYSIT_WORK_RESULT"])
+	if env["BABYSIT_WORK_RESULT"] == "success" {
+		out, pushed, err = apply(applyInput{dir: cmp.Or(env["BABYSIT_DIR"], "."), pr: env["BABYSIT_PR"], head: env["BABYSIT_HEAD"],
+			branch: env["BABYSIT_BRANCH"], bundle: env["BABYSIT_BUNDLE"], proofs: env["BABYSIT_PROOFS"], bot: env["BABYSIT_BOT"],
+			protected: slices.Concat(builtinProtected, strings.Fields(env["BABYSIT_PROTECTED_PATHS"])),
+			dryRun:    env["BABYSIT_DRY_RUN"] != "false", rereadPR: rereadPR})
+	}
 	if err != nil {
-		fmt.Println(err)
-		return 1
+		out = err.Error()
 	}
 	fmt.Println(out)
+	summary, _ := os.ReadFile(env["BABYSIT_SUMMARY"]) // work failed, or the agent wrote none
+	if rerr := recordOutcome(env["GITHUB_REPOSITORY"], env["BABYSIT_PR"], out, pushed, string(summary), time.Now()); rerr != nil {
+		fmt.Println("recording the outcome:", rerr)
+		return 1
+	}
+	if err != nil {
+		return 1
+	}
 	return 0
+}
+
+// recordOutcome sets the status comment's outcome, and on a push the pushed tip, then renders
+// the outcome as the fenced block's first line and the round's summary after a blank line.
+func recordOutcome(repo, pr, outcome, pushed, summary string, now time.Time) error {
+	if !prNumberRE.MatchString(pr) {
+		return errors.New("invalid input: PR number")
+	}
+	comments, err := issueComments(repo, pr)
+	i, st := statusComment(comments)
+	if err != nil || i < 0 {
+		return fmt.Errorf("no status comment found: %v", err)
+	}
+	st.Outcome, st.OutcomeAt = strings.Join(strings.Fields(outcome), " "), now
+	if pushed != "" {
+		st.LastPushSHA, st.LastPushAt = pushed, now
+	}
+	status := fmt.Sprintf("**round %d finished**", st.Rounds)
+	if loginRE.MatchString(st.Owner) {
+		status += " @" + st.Owner // a person must review the push, or decide what to do next
+	}
+	body := renderComment(st, status, st.Outcome+"\n\n"+summary)
+	_, err = gh("api", fmt.Sprintf("repos/%s/issues/comments/%d", repo, comments[i].ID), "-X", "PATCH", "-f", "body="+body)
+	return err
 }
 
 func git(dir string, args ...string) (string, error) {
@@ -71,36 +109,36 @@ func git(dir string, args ...string) (string, error) {
 	return string(out), nil
 }
 
-// apply returns the outcome to record, or an error whose text is the outcome.
-func apply(in applyInput) (string, error) {
+// apply returns the outcome to record and the tip it pushed, or an error whose text is the outcome.
+func apply(in applyInput) (string, string, error) {
 	if !prNumberRE.MatchString(in.pr) || !shaRE.MatchString(in.head) {
-		return "", errors.New("invalid input: PR number or head SHA")
+		return "", "", errors.New("invalid input: PR number or head SHA")
 	}
 	if _, err := git(in.dir, "check-ref-format", "refs/heads/"+in.branch); err != nil {
-		return "", errors.New("invalid input: branch name")
+		return "", "", errors.New("invalid input: branch name")
 	}
 	if err := in.rereadPR(in.pr, in.head); err != nil {
-		return "", fmt.Errorf("stale: %v", err)
+		return "", "", fmt.Errorf("stale: %v", err)
 	}
 	tip, n, err := checkBundle(in)
 	if err != nil {
-		return "", fmt.Errorf("rejected: %v", err)
+		return "", "", fmt.Errorf("rejected: %v", err)
 	}
 	if in.dryRun {
-		return fmt.Sprintf("dry-run: would push %d commits", n), nil
+		return fmt.Sprintf("dry-run: would push %d commits", n), "", nil
 	}
 	// The lease fails if a person reset, moved, or deleted the branch.
 	if _, err := git(in.dir, "push", "--force-with-lease=refs/heads/"+in.branch+":"+in.head,
 		"origin", tip+":refs/heads/"+in.branch); err != nil {
-		return "", fmt.Errorf("push failed: %v", err)
+		return "", "", fmt.Errorf("push failed: %v", err)
 	}
-	return fmt.Sprintf("pushed %d commits", n), nil
+	return fmt.Sprintf("pushed %d commits", n), tip, nil
 }
 
 // checkBundle runs spec §4's bundle checks and returns the tip and commit count.
 func checkBundle(in applyInput) (string, int, error) {
 	if fi, err := os.Stat(in.bundle); err != nil || fi.Size() > 10<<20 {
-		return "", 0, errors.New("bundle missing or over 10 MB")
+		return "", 0, errors.New("no bundle (the agent made no commits), or a bundle over 10 MB")
 	}
 	if _, err := git(in.dir, "fetch", "-q", "--no-tags", "origin", in.head); err != nil {
 		return "", 0, err

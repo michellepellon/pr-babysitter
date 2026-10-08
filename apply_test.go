@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testBot = "babysit-bot <bot@example.invalid>"
@@ -135,7 +136,7 @@ func TestApplyRejectsBadInputs(t *testing.T) {
 	} {
 		in := f.input()
 		mod(&in)
-		if _, err := apply(in); err == nil || !strings.HasPrefix(err.Error(), "invalid input") {
+		if _, _, err := apply(in); err == nil || !strings.HasPrefix(err.Error(), "invalid input") {
 			t.Errorf("apply(pr=%q head=%q branch=%q) = %v, want invalid input", in.pr, in.head, in.branch, err)
 		}
 	}
@@ -146,9 +147,9 @@ func TestApplyPushesWithoutShell(t *testing.T) {
 	f := newFixture(t, "feat/$(touch${IFS}pwned)")
 	tip := f.testAndFix()
 	t.Chdir(f.root)
-	out, err := apply(f.input())
-	if err != nil || out != "pushed 2 commits" {
-		t.Fatalf("apply = %q, %v; want pushed 2 commits", out, err)
+	out, pushed, err := apply(f.input())
+	if err != nil || out != "pushed 2 commits" || pushed != tip {
+		t.Fatalf("apply = %q, %q, %v; want pushed 2 commits, %s", out, pushed, err, tip)
 	}
 	if got := f.originBranch(); got != tip {
 		t.Errorf("origin branch at %s, want %s", got, tip)
@@ -254,7 +255,7 @@ func TestApplyRejectsBundles(t *testing.T) {
 			if c.setup != nil {
 				c.setup(f, &in)
 			}
-			_, err := apply(in)
+			_, _, err := apply(in)
 			if err == nil || !strings.HasPrefix(err.Error(), "rejected: ") || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("apply = %v, want rejected: ...%s...", err, c.want)
 			}
@@ -275,7 +276,7 @@ func TestApplyLeaseRejectsResetAndDeletedBranches(t *testing.T) {
 			f.testAndFix()
 			in := f.input()
 			f.git("push", "-q", "origin", strings.Replace(c.refspec, "%s", f.base, 1))
-			_, err := apply(in)
+			_, _, err := apply(in)
 			if err == nil || !strings.HasPrefix(err.Error(), "push failed: ") {
 				t.Fatalf("apply = %v, want push failed", err)
 			}
@@ -293,9 +294,9 @@ func TestApplyDryRunPushesNothing(t *testing.T) {
 	f.testAndFix()
 	in := f.input()
 	in.dryRun = true
-	out, err := apply(in)
-	if err != nil || out != "dry-run: would push 2 commits" {
-		t.Fatalf("apply = %q, %v; want dry-run: would push 2 commits", out, err)
+	out, pushed, err := apply(in)
+	if err != nil || out != "dry-run: would push 2 commits" || pushed != "" {
+		t.Fatalf("apply = %q, %q, %v; want dry-run: would push 2 commits and no pushed tip", out, pushed, err)
 	}
 	if got := f.originBranch(); got != f.head {
 		t.Errorf("origin branch moved to %s", got)
@@ -308,7 +309,7 @@ func TestApplyStopsOnStalePR(t *testing.T) {
 	in := f.input()
 	var gotPR, gotHead string
 	in.rereadPR = func(pr, head string) error { gotPR, gotHead = pr, head; return errors.New("label removed") }
-	if _, err := apply(in); err == nil || err.Error() != "stale: label removed" {
+	if _, _, err := apply(in); err == nil || err.Error() != "stale: label removed" {
 		t.Fatalf("apply = %v, want stale: label removed", err)
 	}
 	if gotPR != "7" || gotHead != f.head {
@@ -319,16 +320,33 @@ func TestApplyStopsOnStalePR(t *testing.T) {
 	}
 }
 
-// setApplyEnv sets cmdApply's inputs from f.input() and stubs the PR re-read.
-func (f *fixture) setApplyEnv() {
+// setApplyEnv sets cmdApply's inputs from f.input(), stubs the PR re-read, and fakes
+// gh with PR 7's status comment. It returns the state line apply records.
+func (f *fixture) setApplyEnv() *State {
 	in := f.input()
 	for k, v := range map[string]string{"BABYSIT_DIR": in.dir, "BABYSIT_PR": in.pr, "BABYSIT_HEAD": in.head,
-		"BABYSIT_BRANCH": in.branch, "BABYSIT_BUNDLE": in.bundle, "BABYSIT_PROOFS": in.proofs, "BABYSIT_BOT": in.bot} {
+		"BABYSIT_BRANCH": in.branch, "BABYSIT_BUNDLE": in.bundle, "BABYSIT_PROOFS": in.proofs, "BABYSIT_BOT": in.bot,
+		"GITHUB_REPOSITORY": sandbox, "BABYSIT_WORK_RESULT": "success"} {
 		f.t.Setenv(k, v)
 	}
-	old := rereadPR
-	f.t.Cleanup(func() { rereadPR = old })
+	running := State{V: 1, Owner: "michellepellon", Rounds: 1, RoundHead: f.head, Outcome: "running"}
+	comment, _ := json.Marshal(map[string]any{"id": 5, "body": renderComment(running, "**round 1 running**", "1 items\n\n"),
+		"user": map[string]any{"id": botUserID, "login": "github-actions[bot]", "type": "Bot"}})
+	recorded := &State{}
+	oldReread, oldGH := rereadPR, gh
+	f.t.Cleanup(func() { rereadPR, gh = oldReread, oldGH })
 	rereadPR = func(pr, head string) error { return nil }
+	gh = func(args ...string) (string, error) {
+		if slices.Contains(args, "PATCH") {
+			*recorded, _ = parseState(botUserID, strings.TrimPrefix(args[len(args)-1], "body="))
+			return "{}", nil
+		}
+		if args[1] != "repos/"+sandbox+"/issues/7/comments" {
+			f.t.Fatalf("unexpected gh call: %q", args)
+		}
+		return string(comment) + "\n", nil
+	}
+	return recorded
 }
 
 func TestCmdApplyDryRunUnlessTurnedOff(t *testing.T) {
@@ -336,7 +354,7 @@ func TestCmdApplyDryRunUnlessTurnedOff(t *testing.T) {
 		t.Run(v, func(t *testing.T) {
 			f := newFixture(t, "feat")
 			f.testAndFix()
-			f.setApplyEnv()
+			recorded := f.setApplyEnv()
 			t.Setenv("BABYSIT_DRY_RUN", v)
 			if v == "unset" {
 				os.Unsetenv("BABYSIT_DRY_RUN")
@@ -347,33 +365,107 @@ func TestCmdApplyDryRunUnlessTurnedOff(t *testing.T) {
 			if got := f.originBranch(); got != f.head {
 				t.Errorf("BABYSIT_DRY_RUN=%q pushed: origin branch at %s", v, got)
 			}
+			if recorded.Outcome != "dry-run: would push 2 commits" || recorded.LastPushSHA != "" {
+				t.Errorf("recorded %+v; want the dry-run outcome and no push", *recorded)
+			}
 		})
 	}
 	f := newFixture(t, "feat")
 	tip := f.testAndFix()
-	f.setApplyEnv()
+	recorded := f.setApplyEnv()
 	t.Setenv("BABYSIT_DRY_RUN", "false")
 	if code := cmdApply(nil); code != 0 || f.originBranch() != tip {
 		t.Errorf("BABYSIT_DRY_RUN=false: cmdApply = %d, origin at %s; want 0 and %s", code, f.originBranch(), tip)
+	}
+	if recorded.Outcome != "pushed 2 commits" || recorded.LastPushSHA != tip || recorded.LastPushAt.IsZero() || recorded.OutcomeAt.IsZero() {
+		t.Errorf("recorded %+v; want the push outcome, its tip, and both times", *recorded)
 	}
 }
 
 func TestCmdApplyValidatesInputs(t *testing.T) {
 	f := newFixture(t, "feat")
 	f.testAndFix()
-	f.setApplyEnv()
+	recorded := f.setApplyEnv()
 	t.Setenv("BABYSIT_DRY_RUN", "false")
 	t.Setenv("BABYSIT_PROTECTED_PATHS", "a_test.go")
 	if code := cmdApply(nil); code != 1 || f.originBranch() != f.head {
 		t.Errorf("protected path from BABYSIT_PROTECTED_PATHS: cmdApply = %d, want 1 and no push", code)
 	}
+	if !strings.HasPrefix(recorded.Outcome, "rejected: ") || recorded.LastPushSHA != "" {
+		t.Errorf("recorded %+v; want the rejection and no push", *recorded)
+	}
 	t.Setenv("BABYSIT_PROTECTED_PATHS", "")
 	t.Setenv("BABYSIT_PR", "7;x")
-	if code := cmdApply(nil); code != 1 || f.originBranch() != f.head {
-		t.Errorf("bad PR number: cmdApply = %d, want 1 and no push", code)
+	*recorded = State{}
+	if code := cmdApply(nil); code != 1 || f.originBranch() != f.head || *recorded != (State{}) {
+		t.Errorf("bad PR number: cmdApply = %d, recorded %+v; want 1, no push, and no comment write", code, *recorded)
 	}
 	t.Setenv("BABYSIT_PR", "")
 	if code := cmdApply(nil); code != 2 {
 		t.Errorf("missing PR number: cmdApply = %d, want 2", code)
+	}
+}
+
+func TestCmdApplyRecordsFailedWorkWithoutApplying(t *testing.T) {
+	f := newFixture(t, "feat")
+	f.testAndFix()
+	recorded := f.setApplyEnv()
+	t.Setenv("BABYSIT_DRY_RUN", "false")
+	t.Setenv("BABYSIT_WORK_RESULT", "failure")
+	if code := cmdApply(nil); code != 1 || f.originBranch() != f.head {
+		t.Errorf("work failed: cmdApply = %d, origin at %s; want 1 and no push", code, f.originBranch())
+	}
+	if recorded.Outcome != "failed: work ended failure" || recorded.LastPushSHA != "" || recorded.Rounds != 1 {
+		t.Errorf("recorded %+v; want the work failure, no push, and the round count kept", *recorded)
+	}
+}
+
+func TestRecordOutcomeWritesStateAndFencedSummary(t *testing.T) {
+	f := newFakeGH(t, "")
+	running := sampleState
+	running.LastPushSHA, running.LastPushAt = "", time.Time{}
+	c, _ := json.Marshal(map[string]any{"id": 99, "body": renderComment(running, "**round 2 running**", "3 items\n\nold summary"),
+		"user": map[string]any{"id": botUserID, "login": "github-actions[bot]", "type": "Bot"}})
+	other, _ := json.Marshal(map[string]any{"id": 98, "body": renderComment(State{Rounds: 9}, "", ""),
+		"user": map[string]any{"id": 5, "login": "mallory", "type": "User"}})
+	f.comments = string(other) + "\n" + string(c) + "\n"
+	now, tip := time.Date(2026, 10, 8, 4, 0, 0, 0, time.UTC), strings.Repeat("a", 40)
+	summary := "Fixed it.\n```\n![x](https://e.invalid/x.png) @team <!-- babysit-state {} -->"
+	if err := recordOutcome(sandbox, "1", "pushed\n2 commits", tip, summary, now); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.writes) != 1 || f.writes[0][1] != "repos/"+sandbox+"/issues/comments/99" || !slices.Contains(f.writes[0], "PATCH") {
+		t.Fatalf("writes = %q; want one edit of the bot's status comment", f.writes)
+	}
+	body := strings.TrimPrefix(f.writes[0][len(f.writes[0])-1], "body=")
+	st, _ := parseState(botUserID, body)
+	want := running
+	want.Outcome, want.OutcomeAt, want.LastPushSHA, want.LastPushAt = "pushed 2 commits", now, tip, now
+	if st != want {
+		t.Errorf("state = %+v\nwant %+v", st, want)
+	}
+	lines := strings.Split(body, "\n")
+	if lines[1] != "**round 2 finished** @michellepellon" || lines[3] != "````" || lines[4] != "pushed 2 commits" || lines[5] != "" ||
+		!strings.Contains(body, "\n"+summary+"\n````\n") {
+		t.Errorf("body doesn't hold the outcome, a blank line, then the fenced summary:\n%s", body)
+	}
+	if again := commentBody(body, st, "**ready**", "approved"); !strings.Contains(again, "approved\n\n"+summary+"\n") {
+		t.Errorf("plan's rerender lost the recorded summary:\n%s", again)
+	}
+	if err := recordOutcome(sandbox, "1", "stale: closed", "", "", now); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := parseState(botUserID, strings.TrimPrefix(f.writes[1][len(f.writes[1])-1], "body=")); st.LastPushSHA != tip || st.Outcome != "stale: closed" {
+		t.Errorf("no push: state = %+v; want the outcome and the earlier push kept", st)
+	}
+}
+
+func TestRecordOutcomeNeedsAValidPRAndStatusComment(t *testing.T) {
+	f := newFakeGH(t, "") // its comments hold a bot comment with no state line
+	if err := recordOutcome(sandbox, "1", "pushed 1 commits", "", "", time.Now()); err == nil || len(f.writes) != 0 {
+		t.Errorf("no status comment: err %v, writes %q; want an error and no write", err, f.writes)
+	}
+	if err := recordOutcome(sandbox, "1/../2", "x", "", "", time.Now()); err == nil || len(f.writes) != 0 {
+		t.Errorf("bad PR number: err %v, writes %q; want an error and no write", err, f.writes)
 	}
 }
