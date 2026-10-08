@@ -14,13 +14,12 @@
 it in dry-run mode.
 
 **Progress (2026-10-08):**
-- **State:** Tasks 0–7 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3, and
-  Task 7 in PR #4. Task 8 (`sandbox.sh`, `prompt.md`, `action.yml`,
-  `babysit.yml`, `examples/caller.yml`, and apply's outcome recording) is on
-  branch `wip/task8-workflow`, waiting for review.
-- **Next:** Task 9. Read "Notes from Task 8" first: much of Task 8 can only be
-  confirmed on a real runner.
-- **Compactions:** none in the session that ran Task 8.
+- **State:** Tasks 0–8 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
+  Task 7 in PR #4, and Task 8 in PR #5. Task 9 is under way on branch
+  `wip/task9-e2e`.
+- **Next:** Task 9, starting with the runner probe under "Open". Then confirm
+  each item in "Notes from Task 8" on a runner.
+- **Compactions:** none in the session running Task 9.
 - **Size:** 1,129 of 1,150. Task 8 added 47 lines of Go for apply's outcome
   recording.
 - **Open, both blocking the pilot:**
