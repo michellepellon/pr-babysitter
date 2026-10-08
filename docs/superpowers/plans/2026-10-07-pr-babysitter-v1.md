@@ -14,11 +14,13 @@
 it in dry-run mode.
 
 **Progress (2026-10-07):**
-- **State:** Tasks 0 and 1 are done. Task 0's findings are in
-  `2026-10-07-task0-findings.md`; the spec and this plan merged to `main` in
-  PR #1. Task 1 is on branch `wip/task1-scaffold`.
-- **Next:** Tasks 2–6, which can run in parallel.
-- **Compactions:** none in the Task 1 session.
+- **State:** Tasks 0–6 are done. Task 1 merged in PR #2. Tasks 2–6 ran as
+  parallel subagents and are merged and wired into `main.go` on branch
+  `wip/tasks2-6`. The subcommands now read inputs from the environment.
+- **Next:** Task 7, then Task 8. Read the notes under each first.
+- **Compactions:** none in the session that ran Tasks 1–6.
+- **Size:** every task in 2–6 ran over its budget. Michelle raised the ceiling
+  to 900 on 2026-10-07 (see "Rules for every task").
 - **Open:** narrowing the federation rule to `workspace:inference` (see
   "Before Task 0") must happen before the pilot reaches work repos.
 
@@ -35,8 +37,12 @@ it in dry-run mode.
   Michelle's OK first.
 - **One package, `main`,** with one file per concern. Each file starts with two
   `ABOUTME:` lines.
-- **Size budget:** about 650 lines of non-test Go, with a hard ceiling of 800.
-  A task that needs more than its budget stops and explains why.
+- **Size budget:** a hard ceiling of 900 lines of non-test Go, counting only
+  lines that aren't blank or comments (`grep -cvE '^\s*(//|$)'`). A task that
+  needs more than its budget stops and explains why before committing.
+  Michelle raised the ceiling from 800 on 2026-10-07: Tasks 2–6 came in at
+  749 lines against 525 budgeted, after the subcommands moved to env inputs, mostly from fail-closed checks and
+  command-line glue that the budgets didn't count.
 - **Write the test before the code** for every behavior.
   - Unit and integration tests run offline.
   - End-to-end tests use real GitHub, real runners, WIF, and the real model,
@@ -173,7 +179,7 @@ Write a pure function, `decide(Snapshot) Decision`, together with
 `Decision` is one of skip, needs-human, waiting, round, or ready, with a reason
 and the round's items.
 
-- [ ] Write table tests first: one for each of rules 1–11, plus these:
+- [x] Write table tests first: one for each of rules 1–11, plus these:
   - **Classification:**
     - pass: success, neutral, skipped
     - fail: failure, timed_out, startup_failure, error
@@ -202,13 +208,13 @@ and the round's items.
     as failed.
   - **Rule 8:** the last round didn't push, and no writer has acted since,
     means needs-human.
-- [ ] Implement until the tests pass.
+- [x] Implement until the tests pass.
 
 Budget: 140 lines.
 
 ## Task 3: Status comment (`comment.go`)
 
-- [ ] Tests first:
+- [x] Tests first:
   - Rendering then parsing returns the same state.
   - Only line 1 is parsed. A state line anywhere else is ignored.
   - A summary containing backtick fences, `<!-- babysit-state … -->`,
@@ -216,7 +222,7 @@ Budget: 140 lines.
     than any backtick run in it, so none of it renders as live markdown.
   - Summaries over 20 KB are cut, with a marker.
   - Comments not written by github-actions[bot] (matched by ID) are ignored.
-- [ ] Implement `renderComment`, `parseState`, and `fence`.
+- [x] Implement `renderComment`, `parseState`, and `fence`.
 
 Budget: 50 lines.
 
@@ -225,7 +231,7 @@ Budget: 50 lines.
 All commands go through a `runAs` function. In tests it runs as the current
 user; in production it runs `sudo -u agent env -i …`.
 
-- [ ] Write integration tests first, against a tiny real git repo in
+- [x] Write integration tests first, against a tiny real git repo in
   `t.TempDir()`:
   - **Selectors:** the pattern `^[A-Za-z0-9_./:\[\]-]{1,200}$` rejects spaces,
     `;`, `$`, `|`, backticks, and newlines.
@@ -240,14 +246,14 @@ user; in production it runs `sudo -u agent env -i …`.
     - a later fix breaks an earlier proof at the final commit.
   - **Timeouts:** a proof that runs past its limit has its process group
     killed.
-- [ ] Implement. The output is a JSON proof report mapping each commit to its
+- [x] Implement. The output is a JSON proof report mapping each commit to its
   result.
 
 Budget: 80 lines.
 
 ## Task 5: Apply (`apply.go`)
 
-- [ ] Write integration tests first, with real git: a bare "origin" repo, a
+- [x] Write integration tests first, with real git: a bare "origin" repo, a
   working clone, and bundles built in the test.
   - **Input validation:** reject a non-numeric PR number, a malformed SHA, or a
     branch that fails `git check-ref-format`.
@@ -270,14 +276,14 @@ Budget: 80 lines.
       rejected, and the branch isn't recreated.
     - With `dry_run`, nothing is pushed, and the outcome is recorded as
       "dry-run: would push N commits".
-- [ ] Implement. The PR re-read before pushing goes through `github.go`, and
+- [x] Implement. The PR re-read before pushing goes through `github.go`, and
   end-to-end tests cover it.
 
 Budget: 130 lines.
 
 ## Task 6: Gateway (`gateway.go`)
 
-- [ ] Unit tests for the request filter:
+- [x] Unit tests for the request filter:
   - It allows only `POST /v1/messages` and `POST /v1/messages/count_tokens`,
     with or without a query string (Claude Code sends `?beta=true`). Any other
     method or path gets a 403.
@@ -292,7 +298,7 @@ Budget: 130 lines.
   - A request shaped like Claude Code's in Task 0 passes: the body fields and
     betas in `testdata/task0/q67-runner-37673094894.txt`.
   - The 401st request in a round is refused.
-- [ ] Integration tests, with `httptest` servers standing in for GitHub's OIDC
+- [x] Integration tests, with `httptest` servers standing in for GitHub's OIDC
   endpoint and for Anthropic's token and messages endpoints:
   - The first request triggers the token exchange, using the request fields
     from the WIF doc.
@@ -302,7 +308,7 @@ Budget: 130 lines.
   - Streamed responses pass through event by event.
   - A failed exchange returns 502 to the agent, and the log never contains a
     token.
-- [ ] Implement with `httputil.ReverseProxy`, listening on 127.0.0.1 only.
+- [x] Implement with `httputil.ReverseProxy`, listening on 127.0.0.1 only.
 
 Budget: 125 lines, including about 15 for the walk over `source` objects.
 
@@ -330,6 +336,24 @@ Budget: 125 lines, including about 15 for the walk over `source` objects.
 - [ ] Look up each user's writer status once per run.
 
 Budget: 130 lines, including the GraphQL query.
+
+**Notes from Tasks 2–6 (2026-10-07):**
+- `decide` returns `Decision.State`, the state line plan should write. Write
+  it back whenever it changes, or the 60-minute clock never runs. When plan
+  starts a round, it adds one to `Rounds` and sets `RoundHead`, `Outcome`
+  `running`, and `OutcomeAt` itself. Rule 8 counts writer actions after
+  `OutcomeAt`, so a writer who acts during a round that dies still earns
+  another round.
+- Both skips are `Kind: Skip`. Post "not supported" only for the fork reason;
+  the spec wants no comment when a non-writer adds the label.
+- Set a thread's `CreatedAt` to its newest writer comment, or a writer's new
+  reply on an old thread won't count as an item.
+- Put a status context's `state` in `Check.Status`. `Snapshot` has no branch
+  or run ID yet; add them here for logs and outputs.
+- `renderComment`'s `status` argument renders as live markdown so the @owner
+  mention works. Never put check names, PR text, or agent text in it.
+- Replace apply's `rereadPR` function variable with the real re-read. Until
+  then it fails closed.
 
 ## Task 8: Workflow, action, sandbox, prompt
 
@@ -383,6 +407,24 @@ Budget: 130 lines, including the GraphQL query.
   to need one: we download no artifacts from the run that triggered it.
 
 Budget: about 180 lines of YAML, 40 of shell, and 60 of prompt.
+
+**Notes from Tasks 2–6 (2026-10-07):**
+- The subcommands read every input from environment variables, not flags; see
+  `main.go` and each `cmd*` function for the names.
+- `action.yml` should set up Go with `go-version-file: go.mod`, as
+  `check.yml` does.
+- Choose the bot's git identity (`name <email>`), set it as the agent's git
+  author and committer, and pass the same string to apply, which compares it
+  exactly.
+- prove assumes the agent's home is `/home/agent` and passes the runner's
+  `PATH` through, so tools from setup actions are found. It kills timed-out
+  proofs with `sudo -u agent kill -KILL -- -<pgid>`, because the runner user
+  can't signal `agent`'s processes. That relies on sudo keeping the child in
+  its process group with no terminal; Task 9 must confirm it on a runner.
+- The gateway forwards only `Content-Type`, `Accept`, `Anthropic-Version`,
+  `Anthropic-Beta`, and `User-Agent`, plus its own `Authorization`. Task 0
+  recorded only the beta and user-agent headers, so Task 9 must confirm
+  Claude Code works with that list.
 
 ## Task 9: End-to-end suite (`e2e/`)
 

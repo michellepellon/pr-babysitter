@@ -63,3 +63,14 @@ Evidence and run links: `docs/superpowers/plans/2026-10-07-task0-findings.md`.
 - Our Anthropic org is HIPAA-configured and rejects Claude Code's `context_management` field with a 400 that Claude Code doesn't retry. Set `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`.
 - Anthropic issued 300-second tokens in Task 0. Refresh from `expires_in`, not from the rule's configured lifetime.
 - On GitHub-hosted runners `/home/runner` is mode 750, so a separate `agent` user can't reach the runner's files, the workspace, or the Docker socket. Clone the PR into `agent`'s home.
+
+## Build notes from Tasks 2–6 (2026-10-07)
+
+- The status comment's state line is safe only because `json.Marshal` escapes `<`, `>`, `&` and newlines. An encoder with `SetEscapeHTML(false)` would let a field close the `<!-- -->` comment. GitHub may return comment bodies with CRLF, so trim `\r` from line 1.
+- The gateway forwards the body it parsed, re-encoded, not the agent's bytes. Otherwise a body with a repeated key could pass our filter one way and reach Anthropic another way.
+- The gateway refuses any `source` that isn't a base64 or text object, so a future tool with a `source` parameter in its `input_schema` would fail rounds closed.
+- The exact WIF exchange request (grant type, `assertion`, and the four IDs) is copied from the sandbox repo's `spike-q67-wif.yml` into `gateway.go`. The findings doc says to delete that spike after Task 9; `gateway.go` is now the record.
+- Pass `refs/heads/<name>` to `git check-ref-format`, not `--branch`, which expands `@{-1}`. Branch names can't hold spaces but can hold `$(...)` and `${IFS}`.
+- A lease that names an explicit SHA ignores the clone's tracking refs, so it holds even when apply's clone is stale. `git fetch <bundle> <sha>` keeps the bundle's attacker-chosen ref name away from git.
+- The runner user can't signal `agent`'s processes (EPERM); kill them with `sudo -u agent kill -KILL -- -<pgid>`. Set `WaitDelay` on commands whose output is captured, or a process that leaves the group and keeps the pipe open hangs `Wait`.
+- Test repos need `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, so a developer's own git settings, such as commit signing, don't break test commits.
