@@ -91,11 +91,10 @@ allowed "Claude Code starts" ok sh -c '/home/agent/cc/node_modules/.bin/claude -
 oidc_sentinel=oidc-request-token-sentinel
 gateway_pid=$(pgrep -u gateway -x pr-babysitter)
 if sudo grep -qa "$oidc_sentinel" "/proc/$gateway_pid/environ"; then ok "the gateway holds the OIDC request token"; else bad "the gateway holds the OIDC request token"; fi
-# The sentinel goes in two pieces, so this check's own command line doesn't hold it.
+# The bracket keeps grep's own command line, which agent can read too, from matching.
 # shellcheck disable=SC2016 # expands as agent
 blocked "reading the OIDC request token from any process" sh -c \
-  'for f in /proc/[0-9]*/cmdline /proc/[0-9]*/environ; do cat "$f" 2>/dev/null; done | grep -qa "$0$1"' \
-  "${oidc_sentinel%-*}" "-${oidc_sentinel##*-}"
+  'for f in /proc/[0-9]*/cmdline /proc/[0-9]*/environ; do cat "$f" 2>/dev/null; done | grep -qa "oidc-request-token-[s]entinel"'
 
 # prove's timeout kills the proof's process group as agent, through the same wrapper.
 set -m

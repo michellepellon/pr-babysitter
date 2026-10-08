@@ -150,6 +150,11 @@ jobs:
               --permission-mode bypassPermissions --max-turns 100 --max-budget-usd 10 \
               --output-format stream-json --verbose "$prompt" \
             < /dev/null > "$RUNNER_TEMP/round/transcript.jsonl" || echo "Claude Code exited with status $?"
+      # A step timeout never reaches agent's processes through sudo (runner probe,
+      # 2026-10-08), so stop them here even when Claude Code's step timed out.
+      - name: Stop agent's processes
+        if: always()
+        run: sudo pkill -KILL -u agent || true
       # A failed proof still uploads the round; apply then rejects it for lacking a proof report.
       - name: Prove the fixes
         continue-on-error: true
@@ -160,9 +165,7 @@ jobs:
           BABYSIT_OUT: ${{ runner.temp }}/round/proofs.json
           BABYSIT_TEST_COMMAND: ${{ inputs.test_command }}
           BABYSIT_LINT_COMMAND: ${{ inputs.lint_command }}
-        run: |
-          sudo pkill -KILL -u agent || true
-          pr-babysitter prove
+        run: pr-babysitter prove
       - name: Collect the outputs
         run: sudo pr-babysitter-sandbox collect "$ROUND_HEAD" "$RUNNER_TEMP/round"
       - if: always()
