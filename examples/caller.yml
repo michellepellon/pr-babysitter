@@ -1,0 +1,43 @@
+# ABOUTME: Example caller: copy to .github/workflows/babysit.yml in a pilot repo, then fill in the inputs and the pin.
+# ABOUTME: Runs pr-babysitter hourly, after each CI run, and on demand, one run at a time.
+
+name: babysit
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  # zizmor: ignore[dangerous-triggers] babysit.yml reads nothing from the triggering run: no artifacts, no payload.
+  workflow_run:
+    workflows: [ci] # this repo's CI workflow names
+    types: [completed]
+  workflow_dispatch:
+
+permissions: {}
+cache-mode: none
+
+concurrency:
+  group: babysit
+  cancel-in-progress: false
+
+jobs:
+  babysit:
+    # Pin to a full commit SHA of pr-babysitter's main branch; replace the zeros.
+    uses: michellepellon/pr-babysitter/.github/workflows/babysit.yml@0000000000000000000000000000000000000000 # main
+    permissions:
+      actions: read
+      checks: read
+      contents: write
+      id-token: write
+      pull-requests: write
+      statuses: read
+    with:
+      dry_run: true
+      setup_command: ""
+      test_command: go test ./... -run
+      lint_command: ""
+      reviewer_bots: ""
+      protected_paths: ""
+      federation_rule_id: fdrl_REPLACE
+      organization_id: REPLACE
+      service_account_id: svac_REPLACE
+      workspace_id: wrkspc_REPLACE

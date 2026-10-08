@@ -81,3 +81,12 @@ Evidence and run links: `docs/superpowers/plans/2026-10-07-task0-findings.md`.
 - With `--paginate`, add `--jq '.[]'` (or `'.check_suites[]'`) and decode the output as a stream of JSON values. That avoids relying on how gh joins pages. Don't use `--jq` to pick a string field: gh prints strings bare, not as JSON.
 - gh replaces `{owner}`, `{repo}`, and `{branch}` in an endpoint. Path-escape any GitHub-supplied path segment (plan escapes the base branch) so braces in a branch name stay literal.
 - Re-record `testdata/plan/graphql-prs.json` whenever `prQuery` changes. The decode tests caught an alias rename only because the fixture came from the real query. Sandbox PR #1 carries the `babysit` label for this.
+
+## Build notes from Task 8 (2026-10-08)
+
+- `cache-mode: none` goes at the top of a workflow or in a job; a job's value wins. A called workflow can't get more cache access than its caller grants, so the caller sets it too. actionlint 1.7.12 doesn't know the key yet; zizmor 1.30.1 does.
+- A reusable workflow can't pin its own SHA. `job.workflow_repository` and `job.workflow_sha` name the repo and commit of the file that defines the job; check those out to run our own action. GitHub's `$/` syntax doesn't document what it resolves to in a workflow another repo calls.
+- `actions/checkout` v7 refuses fork PR code under `pull_request_target` and `workflow_run` unless `allow-unsafe-pr-checkout: true`. We skip forks, so we never set it.
+- Every user can read every process's command line under `/proc`. Pass secrets to `sudo -u` with `--preserve-env=NAME,...`, never as `env NAME=value` arguments: sudo stays alive as the parent with its arguments visible.
+- `gh auth setup-git` works with only `GH_TOKEN` set (no `gh auth login`), so apply can push after a `persist-credentials: false` checkout.
+- `git bundle create - HEAD ^<base>` works in a depth-1 clone when `<base>` is the shallow tip.
