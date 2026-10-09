@@ -565,13 +565,27 @@ second GitHub account or the admin bypass. Use scenario 1 to test what
   sudo (sandbox run 37861084588: both `sleep`s survived). A timed-out Claude
   Code step skipped prove, the only step that killed them, so work now kills
   them in an `if: always()` step right after Claude Code.
-- **Still needs a `babysit.yml` run in the sandbox:** Claude Code through the
-  gateway's header list (spends model budget); `job.workflow_*` in all three
-  jobs, and what `$/` resolves to in a called workflow; checkout v7 with a PR
-  head SHA under `schedule` and `workflow_run`; apply's GraphQL re-read with
-  and without `checks: read` and `statuses: read`; the collaborator lookup
-  with each job's token; `cache-mode: none` at the top of the caller and
-  `babysit.yml`.
+- **Confirmed by zero-spend `babysit.yml` runs** (sandbox caller on main,
+  pinned to `wip/task9-e2e`, with a wrong `federation_rule_id`, so every
+  token exchange got a 400 and no model call happened):
+  - `cache-mode: none` at the top of the caller and of `babysit.yml` parses
+    and runs (run 37863950997);
+  - `job.workflow_repository` and `job.workflow_sha` name pr-babysitter at
+    the pinned SHA in all three jobs (run 37864207084, started by
+    `workflow_run` when PR #2's CI failed);
+  - checkout v7 takes the PR head SHA under `workflow_run` with no unsafe
+    flag;
+  - Claude Code reaches the gateway from its namespace in the real workflow;
+    with no token it retried for about 3 minutes and exited 1;
+  - apply re-read the PR and recorded "rejected: no bundle" in the status
+    comment;
+  - apply's re-read and collaborator lookup work with and without
+    `checks: read` and `statuses: read` (sandbox run 37865301031). The
+    sandbox is public, though, and public repos show checks to any token, so
+    this says nothing about private pilot repos. Keep both permissions.
+- **Still open:** Claude Code through the gateway's header list (spends model
+  budget); what `$/` resolves to in a called workflow; checkout under
+  `schedule`, which the hourly run will show.
 
 ## Task 10: README and pilot
 
