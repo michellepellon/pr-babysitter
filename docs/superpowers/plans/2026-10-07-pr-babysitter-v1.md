@@ -597,8 +597,10 @@ second GitHub account or the admin bypass. Use scenario 1 to test what
   the state line's `head_seen_at` became `waiting_since`, which any other
   verdict clears.
 - **Still open:** Claude Code through the gateway's header list (spends model
-  budget); checkout under `schedule`: no scheduled run started in the first
-  2h40m after the caller landed.
+  budget). Checkout under `schedule` is unobserved: in 13 hours one
+  scheduled run started (37898644826), and it had no round to start.
+  checkout v7 guards only `pull_request_target` and `workflow_run`, and a
+  dispatch and a `workflow_run` round both checked out the PR head.
 
 ## Task 10: README and pilot
 

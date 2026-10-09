@@ -85,7 +85,7 @@ Evidence and run links: `docs/superpowers/plans/2026-10-07-task0-findings.md`.
 ## Build notes from Task 8 (2026-10-08)
 
 - A rule that times "60 minutes on the same head" fires at once on an old head when a push to the base branch makes GitHub recompute mergeability. Rule 6 now times the wait itself (`waiting_since`).
-- Scheduled runs may not start for hours after a schedule is added: none ran in the sandbox's first 2h40m with an hourly cron.
+- Don't count on scheduled runs: in the sandbox's first 13 hours with an hourly cron (2026-10-09), one run started, 5 minutes late. `workflow_run` after CI does the real work; the schedule only catches what it misses.
 - `cache-mode: none` goes at the top of a workflow or in a job; a job's value wins. A called workflow can't get more cache access than its caller grants, so the caller sets it too. actionlint 1.7.12 doesn't know the key yet; zizmor 1.30.1 does.
 - A reusable workflow can't pin its own SHA, but `uses: $/` runs an action from the called workflow's own repo at the commit the caller pinned, in every job (runner probe 2026-10-09, run 37877432266). `job.workflow_repository` and `job.workflow_sha` name the same repo and commit.
 - `actions/checkout` v7 refuses fork PR code under `pull_request_target` and `workflow_run` unless `allow-unsafe-pr-checkout: true`. We skip forks, so we never set it.
