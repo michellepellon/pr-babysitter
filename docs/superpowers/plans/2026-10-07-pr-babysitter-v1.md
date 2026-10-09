@@ -13,19 +13,18 @@
 `docs/superpowers/specs/2026-10-06-pr-babysitter-design.md` (v3), then pilot
 it in dry-run mode.
 
-**Progress (2026-10-08):**
-- **State:** Tasks 0–8 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
-  Task 7 in PR #4, and Task 8 in PR #5. Task 9 is under way on branch
-  `wip/task9-e2e`.
-- **Next:** merge the Task 9 PR, then Task 10. All seven scenarios have
+**Progress (2026-10-09):**
+- **State:** Tasks 0–9 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
+  Task 7 in PR #4, Task 8 in PR #5, and Task 9 in PR #6.
+- **Next:** Task 10. All seven scenarios have
   passed (see "e2e results"), and the sandbox caller is back on the wrong rule
   ID with `dry_run: true`, so nothing there spends budget.
-- **Compactions:** none in the session running Task 9.
+- **Compactions:** one in the session that ran Task 9; Task 10 starts fresh.
 - **Size:** 1,135 of 1,150. Task 8 added 47 lines of Go for apply's outcome
   recording; the sandbox fix left the count unchanged, and rule 6's wait
   clock added 6.
-- **Open, blocking the pilot:**
-  - Narrow the federation rule to `workspace:inference` (see "Before Task 0").
+- **Nothing blocks the pilot:** Michelle narrowed the federation rule to
+  `workspace:inference` on 2026-10-09.
 - **Fixed on 2026-10-08:** the runner probe showed agent reaching the network
   through systemd-resolved (D-Bus and varlink) and snapd. Michelle approved
   the fix: `sandbox.sh run` puts every agent command after setup in its own
@@ -115,8 +114,10 @@ to the org later.
     - audience `https://api.anthropic.com`
     - claims `repository_owner: michellepellon` and `ref: refs/heads/main`
     - scope `workspace:inference`. The Console offers only
-      `workspace:developer`, so the rule starts there. Narrow it through the
-      Admin API before the pilot reaches work repos.
+      `workspace:developer`, so the rule starts there. Michelle narrowed it
+      through the Admin API on 2026-10-09 (`POST
+      /v1/organizations/federation_rules/{id}` with `{"oauth_scope":
+      "workspace:inference"}`).
     - a 600-second token lifetime
 - **After the move to the org:** transfer both repos, then update the module
   path, every caller's `uses:` line, and the federation rule's repository and
@@ -625,7 +626,7 @@ commit waited for approval anyway, so scenario 1 doesn't say what
 
 ## Task 10: README and pilot
 
-- [ ] Write `README.md`, under 100 lines: what it does, setup (spec §7), inputs
+- [x] Write `README.md`, under 100 lines: what it does, setup (spec §7), inputs
   (spec §8), how to pause it, and how to read the status comment.
 - [ ] Pilot on one repo with `dry_run: true` for two weeks or 20 rounds,
   whichever comes first, and review every proposed patch.
@@ -634,8 +635,9 @@ commit waited for approval anyway, so scenario 1 doesn't say what
 
 ## Done means
 
-- `make check` and `make e2e` pass.
-- Non-test Go stays under 800 lines.
+- `make check` passes, and all seven e2e scenarios pass across the sandbox's
+  two caller setups (Task 9: 4–7 with the wrong rule ID, 1–3 with the real one).
+- Non-test Go stays within the 1,150-line budget.
 - Every guarantee in spec §6 has a test that fails if the guarantee breaks:
 
 | Guarantee | Test |
