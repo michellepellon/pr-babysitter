@@ -13,14 +13,13 @@
 `docs/superpowers/specs/2026-10-06-pr-babysitter-design.md` (v3), then pilot
 it in dry-run mode.
 
-**Progress (2026-10-08):**
-- **State:** Tasks 0–8 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
-  Task 7 in PR #4, and Task 8 in PR #5. Task 9 is under way on branch
-  `wip/task9-e2e`.
-- **Next:** merge the Task 9 PR, then Task 10. All seven scenarios have
+**Progress (2026-10-09):**
+- **State:** Tasks 0–9 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
+  Task 7 in PR #4, Task 8 in PR #5, and Task 9 in PR #6.
+- **Next:** Task 10. All seven scenarios have
   passed (see "e2e results"), and the sandbox caller is back on the wrong rule
   ID with `dry_run: true`, so nothing there spends budget.
-- **Compactions:** none in the session running Task 9.
+- **Compactions:** one in the session that ran Task 9; Task 10 starts fresh.
 - **Size:** 1,135 of 1,150. Task 8 added 47 lines of Go for apply's outcome
   recording; the sandbox fix left the count unchanged, and rule 6's wait
   clock added 6.
@@ -634,8 +633,9 @@ commit waited for approval anyway, so scenario 1 doesn't say what
 
 ## Done means
 
-- `make check` and `make e2e` pass.
-- Non-test Go stays under 800 lines.
+- `make check` passes, and all seven e2e scenarios pass across the sandbox's
+  two caller setups (Task 9: 4–7 with the wrong rule ID, 1–3 with the real one).
+- Non-test Go stays within the 1,150-line budget.
 - Every guarantee in spec §6 has a test that fails if the guarantee breaks:
 
 | Guarantee | Test |
