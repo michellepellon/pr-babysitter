@@ -626,7 +626,7 @@ commit waited for approval anyway, so scenario 1 doesn't say what
 
 ## Task 10: README and pilot
 
-- [ ] Write `README.md`, under 100 lines: what it does, setup (spec §7), inputs
+- [x] Write `README.md`, under 100 lines: what it does, setup (spec §7), inputs
   (spec §8), how to pause it, and how to read the status comment.
 - [ ] Pilot on one repo with `dry_run: true` for two weeks or 20 rounds,
   whichever comes first, and review every proposed patch.
