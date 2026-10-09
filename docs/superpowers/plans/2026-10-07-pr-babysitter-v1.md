@@ -23,8 +23,8 @@ it in dry-run mode.
 - **Size:** 1,135 of 1,150. Task 8 added 47 lines of Go for apply's outcome
   recording; the sandbox fix left the count unchanged, and rule 6's wait
   clock added 6.
-- **Open, blocking the pilot:**
-  - Narrow the federation rule to `workspace:inference` (see "Before Task 0").
+- **Nothing blocks the pilot:** Michelle narrowed the federation rule to
+  `workspace:inference` on 2026-10-09.
 - **Fixed on 2026-10-08:** the runner probe showed agent reaching the network
   through systemd-resolved (D-Bus and varlink) and snapd. Michelle approved
   the fix: `sandbox.sh run` puts every agent command after setup in its own
@@ -114,8 +114,10 @@ to the org later.
     - audience `https://api.anthropic.com`
     - claims `repository_owner: michellepellon` and `ref: refs/heads/main`
     - scope `workspace:inference`. The Console offers only
-      `workspace:developer`, so the rule starts there. Narrow it through the
-      Admin API before the pilot reaches work repos.
+      `workspace:developer`, so the rule starts there. Michelle narrowed it
+      through the Admin API on 2026-10-09 (`POST
+      /v1/organizations/federation_rules/{id}` with `{"oauth_scope":
+      "workspace:inference"}`).
     - a 600-second token lifetime
 - **After the move to the org:** transfer both repos, then update the module
   path, every caller's `uses:` line, and the federation rule's repository and
