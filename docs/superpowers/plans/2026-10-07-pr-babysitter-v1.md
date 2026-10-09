@@ -17,9 +17,9 @@ it in dry-run mode.
 - **State:** Tasks 0–8 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
   Task 7 in PR #4, and Task 8 in PR #5. Task 9 is under way on branch
   `wip/task9-e2e`.
-- **Next:** all seven scenarios have passed (see "e2e results"). Ask Michelle
-  before switching the sandbox caller back to the wrong rule ID (a push to its
-  main), then open the Task 9 PR.
+- **Next:** merge the Task 9 PR, then Task 10. All seven scenarios have
+  passed (see "e2e results"), and the sandbox caller is back on the wrong rule
+  ID with `dry_run: true`, so nothing there spends budget.
 - **Compactions:** none in the session running Task 9.
 - **Size:** 1,135 of 1,150. Task 8 added 47 lines of Go for apply's outcome
   recording; the sandbox fix left the count unchanged, and rule 6's wait
