@@ -84,9 +84,26 @@ Evidence and run links: `docs/superpowers/plans/2026-10-07-task0-findings.md`.
 
 ## Build notes from Task 8 (2026-10-08)
 
+- A rule that times "60 minutes on the same head" fires at once on an old head when a push to the base branch makes GitHub recompute mergeability. Rule 6 now times the wait itself (`waiting_since`).
+- Don't count on scheduled runs: in the sandbox's first 13 hours with an hourly cron (2026-10-09), one run started, 5 minutes late. `workflow_run` after CI does the real work; the schedule only catches what it misses.
 - `cache-mode: none` goes at the top of a workflow or in a job; a job's value wins. A called workflow can't get more cache access than its caller grants, so the caller sets it too. actionlint 1.7.12 doesn't know the key yet; zizmor 1.30.1 does.
-- A reusable workflow can't pin its own SHA. `job.workflow_repository` and `job.workflow_sha` name the repo and commit of the file that defines the job; check those out to run our own action. GitHub's `$/` syntax doesn't document what it resolves to in a workflow another repo calls.
+- A reusable workflow can't pin its own SHA, but `uses: $/` runs an action from the called workflow's own repo at the commit the caller pinned, in every job (runner probe 2026-10-09, run 37877432266). `job.workflow_repository` and `job.workflow_sha` name the same repo and commit.
 - `actions/checkout` v7 refuses fork PR code under `pull_request_target` and `workflow_run` unless `allow-unsafe-pr-checkout: true`. We skip forks, so we never set it.
 - Every user can read every process's command line under `/proc`. Pass secrets to `sudo -u` with `--preserve-env=NAME,...`, never as `env NAME=value` arguments: sudo stays alive as the parent with its arguments visible.
 - `gh auth setup-git` works with only `GH_TOKEN` set (no `gh auth login`), so apply can push after a `persist-credentials: false` checkout.
 - `git bundle create - HEAD ^<base>` works in a depth-1 clone when `<base>` is the shallow tip.
+
+## Runner probe: local services leak the network (2026-10-08)
+
+Runs 37858608647 and 37858943131 in pr-babysitter-sandbox, branch `probe/local-services`.
+
+- With `sandbox.sh close` in place, agent still resolved `p<nonce>-10-11-12-13.nip.io` to 10.11.12.13 through `resolvectl`, `busctl` (org.freedesktop.resolve1), and varlink (`/run/systemd/resolve/io.systemd.Resolve`), and `snap find` searched the store. Owner-match iptables rules filter agent's packets, not what root daemons do for it over unix sockets.
+- The system bus also offers agent PackageKit, fwupd, ModemManager, UDisks2, netplan, and networkd, so a socket denylist won't hold. Listening sockets agent could connect to: the D-Bus system bus, resolved's varlink socket, snapd's two sockets, journald's stdout, userdb, ManagedOOM, uuidd, and the abstract sockets of multipathd and iscsid.
+- A network namespace plus private tmpfs over `/run` and `/tmp` closed all of these, while agent kept its own loopback and reached a listener on the host side of a veth pair. Killing a process group through `sudo` and `ip netns exec` still worked.
+- Hosted runners (kernel 6.17, systemd 255) have `unshare`, `setpriv`, and `ip netns`, but no `bwrap`. `kernel.apparmor_restrict_unprivileged_userns` is 1.
+- The fix is `sandbox.sh run`: every agent command after setup goes through it, and `e2e/confinement.sh` (check.yml's `sandbox` job) checks it on a runner. A grep for a secret in `/proc/*/cmdline` matches its own command line; write the pattern as `secre[t]`.
+- A step timeout doesn't reach processes started through `sudo`: both of agent's `sleep`s outlived a 1-minute step (run 37861084588). Kill agent's processes in an `if: always()` step.
+
+## e2e notes from Task 9 (2026-10-09)
+
+- The agent won't touch anything that looks protected. To test apply's protected-path check, hide the path from it: the sandbox caller reads `protected_paths` from the repo variable `SANDBOX_PATHS`, and no directory, commit, PR, or comment hints at it. Two paid rounds went to runs where it read the hint and refused.

@@ -14,23 +14,24 @@
 it in dry-run mode.
 
 **Progress (2026-10-08):**
-- **State:** Tasks 0–7 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3, and
-  Task 7 in PR #4. Task 8 (`sandbox.sh`, `prompt.md`, `action.yml`,
-  `babysit.yml`, `examples/caller.yml`, and apply's outcome recording) is on
-  branch `wip/task8-workflow`, waiting for review.
-- **Next:** Task 9. Read "Notes from Task 8" first: much of Task 8 can only be
-  confirmed on a real runner.
-- **Compactions:** none in the session that ran Task 8.
-- **Size:** 1,129 of 1,150. Task 8 added 47 lines of Go for apply's outcome
-  recording.
-- **Open, both blocking the pilot:**
+- **State:** Tasks 0–8 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
+  Task 7 in PR #4, and Task 8 in PR #5. Task 9 is under way on branch
+  `wip/task9-e2e`.
+- **Next:** merge the Task 9 PR, then Task 10. All seven scenarios have
+  passed (see "e2e results"), and the sandbox caller is back on the wrong rule
+  ID with `dry_run: true`, so nothing there spends budget.
+- **Compactions:** none in the session running Task 9.
+- **Size:** 1,135 of 1,150. Task 8 added 47 lines of Go for apply's outcome
+  recording; the sandbox fix left the count unchanged, and rule 6's wait
+  clock added 6.
+- **Open, blocking the pilot:**
   - Narrow the federation rule to `workspace:inference` (see "Before Task 0").
-  - The agent may reach the network through local services: systemd-resolved
-    over D-Bus or varlink, and snapd if present. iptables filters only its
-    packets. Michelle decided on 2026-10-08 to merge Task 8 and start Task 9
-    with a runner probe (`resolvectl`, `busctl`, `snap find`, all as `agent`
-    with the network closed). Fix whatever the probe shows before any pilot
-    repo runs a round, and keep the fix as a Task 9 test.
+- **Fixed on 2026-10-08:** the runner probe showed agent reaching the network
+  through systemd-resolved (D-Bus and varlink) and snapd. Michelle approved
+  the fix: `sandbox.sh run` puts every agent command after setup in its own
+  network namespace, with private `/run` and `/tmp`, and the gateway listens
+  on the host's end of a veth pair. `e2e/confinement.sh`, run by check.yml's
+  `sandbox` job, keeps it fixed; a mutation without the namespaces fails it.
 
 **Architecture:**
 - Three jobs (plan, work, apply) in one reusable GitHub Actions workflow.
@@ -548,6 +549,79 @@ The sandbox has only one maintainer, and its ruleset requires approval from
 someone other than the last pusher. So for any test that needs a merge, use a
 second GitHub account or the admin bypass. Use scenario 1 to test what
 `require_extra_approval_for_unattributed_changes` does.
+
+**Runner evidence for "Notes from Task 8" (2026-10-08):**
+- **Confirmed by check.yml's `sandbox` job** (`e2e/confinement.sh`, run
+  37861459110):
+  - prove's group kill works through `sudo` and `sandbox.sh run`;
+  - agent reaches the gateway and its own loopback, and nothing else: no DNS,
+    no ICMP, no IPv6, none of the host's other ports, and none of the host's
+    40 listening unix sockets;
+  - the gateway, started with `&`, keeps serving into later steps;
+  - `sudo --preserve-env` hands the OIDC request token to the gateway, and
+    agent can't read it from any process's command line or environment;
+  - `uses: $/` builds the action, `go-version-file` included, in a workflow
+    that isn't called from another repo.
+- **Found and fixed:** a step timeout doesn't reach agent's processes through
+  sudo (sandbox run 37861084588: both `sleep`s survived). A timed-out Claude
+  Code step skipped prove, the only step that killed them, so work now kills
+  them in an `if: always()` step right after Claude Code.
+- **Confirmed by zero-spend `babysit.yml` runs** (sandbox caller on main,
+  pinned to `wip/task9-e2e`, with a wrong `federation_rule_id`, so every
+  token exchange got a 400 and no model call happened):
+  - `cache-mode: none` at the top of the caller and of `babysit.yml` parses
+    and runs (run 37863950997);
+  - `job.workflow_repository` and `job.workflow_sha` name pr-babysitter at
+    the pinned SHA in all three jobs (run 37864207084, started by
+    `workflow_run` when PR #2's CI failed);
+  - checkout v7 takes the PR head SHA under `workflow_run` with no unsafe
+    flag;
+  - Claude Code reaches the gateway from its namespace in the real workflow;
+    with no token it retried for about 3 minutes and exited 1;
+  - apply re-read the PR and recorded "rejected: no bundle" in the status
+    comment;
+  - apply's re-read and collaborator lookup work with and without
+    `checks: read` and `statuses: read` (sandbox run 37865301031). The
+    sandbox is public, though, and public repos show checks to any token, so
+    this says nothing about private pilot repos. Keep both permissions.
+- **`$/` in a called workflow** resolves to pr-babysitter at the commit the
+  caller pinned, in all three jobs (run 37877432266, with a marker file only
+  that commit had). `babysit.yml` now uses `uses: $/` and no longer checks
+  itself out; `action.yml` installs `prompt.md`. That dropped three zizmor
+  ignores and 17 lines of YAML. Run 37881291291 confirmed the switch end to end
+  at 959db53, still with no model calls.
+- **Found and fixed:** rule 6 timed "60 minutes on the same head", so a push
+  to the base branch, which makes GitHub recompute mergeability, sent every
+  open PR whose head was older than an hour straight to needs-human (PR #2,
+  runs 37877293702 and 37881260341). Michelle chose to time the wait itself:
+  the state line's `head_seen_at` became `waiting_since`, which any other
+  verdict clears.
+- **Confirmed by e2e 1–3:** Claude Code works through the gateway's header
+  list. The gateway logs only refusals: one `GET /` per round, from Claude Code
+  itself, since the agent ran no HTTP command.
+- **Still open:** checkout under `schedule` is unobserved: in 13 hours one
+  scheduled run started (37898644826), and it had no round to start.
+  checkout v7 guards only `pull_request_target` and `workflow_run`, and a
+  dispatch and a `workflow_run` round both checked out the PR head.
+
+**e2e results (2026-10-09), wrong rule ID, no model calls:** scenario 4
+(label removed) passed in 406s, 5 (branch reset) in 415s, 6 (round cap) in
+1824s, and 7 (wrong branch) in 457s. Scenario 6 needs the wrong rule ID: with
+a real agent, round 1 fixes the test and the PR stops for CI approval. So no
+single caller setting runs all seven, and `make e2e` takes scenario numbers.
+
+**e2e results (2026-10-09), real rule ID, `dry_run: false`:** scenario 1
+(failing test) passed in 280s: the bot pushed 3196d44 with proof `test TestSub`,
+its CI waited for approval, and the status named @michellepellon. Scenario 2
+(malicious comment) passed in 268s. Scenario 3 (protected path) passed in 305s
+on its third run. The first two runs never reached apply: the agent read the
+protected path in the caller, then in hints (a `protected/` directory, a
+"protected-path" commit, a caller comment), and refused to commit. Now the
+caller reads `protected_paths` from the repo variable `SANDBOX_PATHS`
+(`calc2/`), which agent can't see, and nothing names it. Five paid rounds in
+all. The repo's approval policy reads `first_time_contributors`; the bot's
+commit waited for approval anyway, so scenario 1 doesn't say what
+`require_extra_approval_for_unattributed_changes` adds.
 
 ## Task 10: README and pilot
 

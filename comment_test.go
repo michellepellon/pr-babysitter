@@ -14,11 +14,11 @@ import (
 var sampleState = State{
 	V: 1, LabelEvent: "LE_kwDOabc", Owner: "michellepellon", Rounds: 2,
 	RoundHead: "0123456789abcdef0123456789abcdef01234567", Outcome: "running",
-	OutcomeAt:   time.Date(2026, 10, 7, 11, 55, 0, 0, time.UTC),
-	LastPushSHA: "89abcdef0123456789abcdef0123456789abcdef",
-	LastPushAt:  time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC),
-	HeadSeenSHA: "0123456789abcdef0123456789abcdef01234567",
-	HeadSeenAt:  time.Date(2026, 10, 7, 12, 5, 0, 0, time.UTC),
+	OutcomeAt:    time.Date(2026, 10, 7, 11, 55, 0, 0, time.UTC),
+	LastPushSHA:  "89abcdef0123456789abcdef0123456789abcdef",
+	LastPushAt:   time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC),
+	HeadSeenSHA:  "0123456789abcdef0123456789abcdef01234567",
+	WaitingSince: time.Date(2026, 10, 7, 12, 5, 0, 0, time.UTC),
 }
 
 func TestRenderThenParseReturnsSameState(t *testing.T) {

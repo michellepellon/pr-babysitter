@@ -43,15 +43,8 @@ jobs:
       head: ${{ steps.plan.outputs.head }}
       branch: ${{ steps.plan.outputs.branch }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: babysitter
-          persist-credentials: false
-      # job.workflow_* names this file's own repo and commit, checked out just above. Not $/:
-      # GitHub doesn't document what it resolves to in a workflow another repo calls.
-      - uses: ./babysitter # zizmor: ignore[self-repository]
+      # $/ is this file's own repo at the commit the caller pinned (runner probe, 2026-10-09).
+      - uses: $/
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,7 +69,8 @@ jobs:
       contents: read
       id-token: write
     env:
-      BABYSIT_PORT: "8199"
+      # The host's end of agent's veth pair; sandbox.sh close sets it up.
+      BABYSIT_GATEWAY: 10.199.0.1:8199
       ROUND_HEAD: ${{ needs.plan.outputs.head }}
     steps:
       - name: Fail unless on the default branch
@@ -89,15 +83,8 @@ jobs:
             exit 1
           fi
       # Build before the PR is checked out, so nothing from the PR can stand in for our code.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: babysitter
-          persist-credentials: false
-      # job.workflow_* names this file's own repo and commit, checked out just above. Not $/:
-      # GitHub doesn't document what it resolves to in a workflow another repo calls.
-      - uses: ./babysitter # zizmor: ignore[self-repository]
+      # $/ is this file's own repo at the commit the caller pinned (runner probe, 2026-10-09).
+      - uses: $/
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.head }}
@@ -108,7 +95,7 @@ jobs:
           name: items
           path: ${{ runner.temp }}/items
       - name: Create the users, agent's clone, and Claude Code
-        run: sudo env PATH="$PATH" "$GITHUB_WORKSPACE/babysitter/sandbox.sh" setup "$GITHUB_WORKSPACE/pr" "$RUNNER_TEMP/items"
+        run: sudo env PATH="$PATH" pr-babysitter-sandbox setup "$GITHUB_WORKSPACE/pr" "$RUNNER_TEMP/items"
       - name: Run setup as agent
         if: inputs.setup_command != ''
         env:
@@ -117,7 +104,7 @@ jobs:
           cd /home/agent/repo
           sudo -u agent env -i HOME=/home/agent PATH="$PATH" bash -c "$SETUP_COMMAND"
       - name: Close the network
-        run: sudo "$GITHUB_WORKSPACE/babysitter/sandbox.sh" close "$BABYSIT_PORT"
+        run: sudo pr-babysitter-sandbox close "$BABYSIT_GATEWAY"
       - name: Start the gateway
         env:
           FEDERATION_RULE_ID: ${{ inputs.federation_rule_id }}
@@ -128,27 +115,32 @@ jobs:
           mkdir -p "$RUNNER_TEMP/round"
           # --preserve-env, not env VAR=..., keeps the OIDC request token out of
           # sudo's command line, which every user can read under /proc.
-          sudo --preserve-env=BABYSIT_PORT,ACTIONS_ID_TOKEN_REQUEST_URL,ACTIONS_ID_TOKEN_REQUEST_TOKEN,FEDERATION_RULE_ID,ORGANIZATION_ID,SERVICE_ACCOUNT_ID,WORKSPACE_ID \
+          sudo --preserve-env=BABYSIT_GATEWAY,ACTIONS_ID_TOKEN_REQUEST_URL,ACTIONS_ID_TOKEN_REQUEST_TOKEN,FEDERATION_RULE_ID,ORGANIZATION_ID,SERVICE_ACCOUNT_ID,WORKSPACE_ID \
             -u gateway /usr/local/bin/pr-babysitter gateway 2>"$RUNNER_TEMP/round/gateway.log" &
-          timeout 30 bash -c 'until curl -s -o /dev/null "http://127.0.0.1:$BABYSIT_PORT/"; do sleep 1; done'
+          timeout 30 bash -c 'until curl -s -o /dev/null "http://$BABYSIT_GATEWAY/"; do sleep 1; done'
       - name: Run Claude Code as agent
         timeout-minutes: 30
         env:
           TEST_COMMAND: ${{ inputs.test_command }}
           LINT_COMMAND: ${{ inputs.lint_command }}
         run: |
-          prompt="$(cat "$GITHUB_WORKSPACE/babysitter/prompt.md")
+          prompt="$(cat /usr/local/share/pr-babysitter/prompt.md)
 
           The test command is: ${TEST_COMMAND:-none, so test proofs are unavailable}
           The lint command is: ${LINT_COMMAND:-none, so lint proofs are unavailable}"
           cd /home/agent/repo
-          sudo -u agent env -i HOME=/home/agent PATH="/home/agent/cc/node_modules/.bin:$PATH" \
-            ANTHROPIC_BASE_URL="http://127.0.0.1:$BABYSIT_PORT" ANTHROPIC_API_KEY=placeholder \
+          sudo env PATH="/home/agent/cc/node_modules/.bin:$PATH" pr-babysitter-sandbox run \
+            env ANTHROPIC_BASE_URL="http://$BABYSIT_GATEWAY" ANTHROPIC_API_KEY=placeholder \
             CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 \
             claude -p --bare --setting-sources user --strict-mcp-config \
               --permission-mode bypassPermissions --max-turns 100 --max-budget-usd 10 \
               --output-format stream-json --verbose "$prompt" \
             < /dev/null > "$RUNNER_TEMP/round/transcript.jsonl" || echo "Claude Code exited with status $?"
+      # A step timeout never reaches agent's processes through sudo (runner probe,
+      # 2026-10-08), so stop them here even when Claude Code's step timed out.
+      - name: Stop agent's processes
+        if: always()
+        run: sudo pkill -KILL -u agent || true
       # A failed proof still uploads the round; apply then rejects it for lacking a proof report.
       - name: Prove the fixes
         continue-on-error: true
@@ -159,11 +151,9 @@ jobs:
           BABYSIT_OUT: ${{ runner.temp }}/round/proofs.json
           BABYSIT_TEST_COMMAND: ${{ inputs.test_command }}
           BABYSIT_LINT_COMMAND: ${{ inputs.lint_command }}
-        run: |
-          sudo pkill -KILL -u agent || true
-          pr-babysitter prove
+        run: pr-babysitter prove
       - name: Collect the outputs
-        run: sudo "$GITHUB_WORKSPACE/babysitter/sandbox.sh" collect "$ROUND_HEAD" "$RUNNER_TEMP/round"
+        run: sudo pr-babysitter-sandbox collect "$ROUND_HEAD" "$RUNNER_TEMP/round"
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -183,15 +173,8 @@ jobs:
       checks: read
       statuses: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: babysitter
-          persist-credentials: false
-      # job.workflow_* names this file's own repo and commit, checked out just above. Not $/:
-      # GitHub doesn't document what it resolves to in a workflow another repo calls.
-      - uses: ./babysitter # zizmor: ignore[self-repository]
+      # $/ is this file's own repo at the commit the caller pinned (runner probe, 2026-10-09).
+      - uses: $/
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: repo

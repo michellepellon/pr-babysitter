@@ -17,9 +17,10 @@ import (
 	"time"
 )
 
-// agentPrefix runs a command as the agent user with an empty environment
-// except HOME and PATH. Tests set it to nil to run as the current user.
-var agentPrefix = []string{"sudo", "-u", "agent", "env", "-i", "HOME=/home/agent", "PATH=" + os.Getenv("PATH")}
+// agentPrefix runs a command as the agent user in its sandbox, with an empty
+// environment except HOME and PATH (see sandbox.sh run). Tests set it to nil to
+// run as the current user.
+var agentPrefix = []string{"sudo", "env", "PATH=" + os.Getenv("PATH"), "/usr/local/bin/pr-babysitter-sandbox", "run"}
 
 var proofTimeout, proofsTimeout = 5 * time.Minute, 10 * time.Minute
 

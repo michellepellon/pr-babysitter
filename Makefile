@@ -3,7 +3,7 @@
 
 ZIZMOR ?= uvx zizmor@1.30.1
 YAML := $(wildcard .github/workflows/*.yml examples/*.yml action.yml)
-SHELL_SCRIPTS := $(wildcard sandbox.sh)
+SHELL_SCRIPTS := $(wildcard sandbox.sh e2e/*.sh)
 
 .PHONY: check e2e
 
@@ -12,7 +12,7 @@ check:
 	go vet ./...
 	go test ./...
 	$(ZIZMOR) $(YAML)
-	$(if $(SHELL_SCRIPTS),shellcheck $(SHELL_SCRIPTS))
+	$(if $(SHELL_SCRIPTS),shellcheck -x $(SHELL_SCRIPTS))
 
-e2e:
-	e2e/run.sh
+e2e: # scenarios to run: make e2e N="4 5 6 7"
+	e2e/run.sh $(N)

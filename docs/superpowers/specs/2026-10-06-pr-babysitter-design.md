@@ -83,8 +83,10 @@ rules in order and stops at the first that matches:
    `action_required` with no jobs, and GraphQL's combined status is `null`.
    That means plan must read check suites to detect it.
 6. A check on the head is pending, or GitHub hasn't yet computed mergeability or
-   checks: **waiting**. After 60 minutes on the same head: **needs-human**,
-   naming the stuck check.
+   checks: **waiting**. After 60 minutes of waiting without a break, on the
+   same head: **needs-human**, naming the stuck check. The clock times the
+   wait, not the head: a push to the base branch makes GitHub recompute
+   mergeability on heads that may be hours old.
 7. A check was cancelled, needs action, or went stale: **needs-human**, naming
    the check.
 8. The last round ended without a push, and no writer has commented, reviewed,
@@ -132,13 +134,18 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
    run the repo's `setup_command`. Only code a person has approved gets here:
    - the first round runs the human's own head;
    - every later head ran CI only after a person approved it (rule 5).
-4. **Close the network.** iptables and ip6tables rules drop all of `agent`'s
-   traffic, DNS and ICMP included, except connections to the gateway's port on
-   127.0.0.1.
+4. **Close the network.** From here on, `agent`'s commands run in their own
+   network namespace, joined to the host by a veth pair, with private `/run`
+   and `/tmp`. iptables and ip6tables rules there refuse all of `agent`'s
+   traffic, DNS and ICMP included, except its own loopback and connections to
+   the gateway on the host's end of the pair. The namespace and mounts also
+   hide the unix sockets of root daemons (D-Bus, systemd-resolved, snapd),
+   which would otherwise reach the network for `agent`; a runner probe on
+   2026-10-08 showed that they do.
 5. **Start the gateway.** As `gateway`, start the model gateway (described
    below), passing it the job's OIDC request variables.
-6. **Run Claude Code.** As `agent`, run Claude Code under `env -i`, so it sees
-   only these variables:
+6. **Run Claude Code.** As `agent`, in its namespace, run Claude Code under
+   `env -i`, so it sees only these variables:
    - `HOME` and `PATH`
    - `ANTHROPIC_BASE_URL`, pointing at the gateway
    - a placeholder `ANTHROPIC_API_KEY`
@@ -171,7 +178,7 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
      person must decide something.
 7. **Prove the fixes.** Kill every `agent` process first. Our program drives the
    proofs from the runner user, but every git and proof command runs as
-   `agent`, passed as an argument list with no shell: either
+   `agent` in its namespace, passed as an argument list with no shell: either
    `test_command <selector>` or `lint_command`. Each command is split on
    whitespace, with no quoting, and the selector is one more argument.
    - Selectors must match `^[A-Za-z0-9_./:\[\]-]{1,200}$`.
@@ -188,7 +195,8 @@ work runs in the `babysit` environment, with a 45-minute timeout. Its steps:
 
 ### The model gateway
 
-The gateway is a small reverse proxy on 127.0.0.1. It:
+The gateway is a small reverse proxy on the host's end of `agent`'s veth
+pair. It:
 
 - exchanges the job's GitHub OIDC token for an Anthropic token, and refreshes
   it before the response's `expires_in` runs out. Anthropic issued 300-second
@@ -251,7 +259,8 @@ changes. The comment has three parts:
 
 1. **The state line.** Line 1 is `<!-- babysit-state {...} -->`. Its fields are
    `v`, `label_event`, `owner`, `rounds`, `round_head`, `outcome`,
-   `outcome_at`, `last_push_sha`, `last_push_at`, `head_seen_sha`, and `head_seen_at`. plan
+   `outcome_at`, `last_push_sha`, `last_push_at`, `head_seen_sha`, and
+   `waiting_since`. plan
    reads only this line, only from comments by github-actions[bot] (matched by
    ID), and pages through all of a PR's comments to find it.
 2. **The status.** The state, what the PR is waiting on, and an @mention of the
