@@ -31,7 +31,7 @@ func readySnapshot() Snapshot {
 		ReviewerBots: []int64{revBot.ID},
 		State: State{V: 1, LabelEvent: "LE_1", Owner: "michelle",
 			LastPushSHA: "1111111111111111111111111111111111111111", LastPushAt: now.Add(-2 * time.Hour),
-			HeadSeenSHA: head, HeadSeenAt: now.Add(-time.Minute)},
+			HeadSeenSHA: head},
 		Now: now,
 	}
 }
@@ -120,11 +120,11 @@ func TestDecide(t *testing.T) {
 		{"no checks yet", func(s *Snapshot) { s.Checks = nil }, Waiting, "checks", 0},
 		{"stuck 60 minutes", func(s *Snapshot) {
 			s.Checks = append(s.Checks, Check{Name: "lint", Status: "QUEUED"})
-			s.State.HeadSeenAt = now.Add(-60 * time.Minute)
+			s.State.WaitingSince = now.Add(-60 * time.Minute)
 		}, NeedsHuman, "lint", 0},
 		{"stuck clock restarts on new head", func(s *Snapshot) {
 			s.Checks = append(s.Checks, Check{Name: "lint", Status: "QUEUED"})
-			s.State.HeadSeenSHA, s.State.HeadSeenAt = "2222222", now.Add(-2*time.Hour)
+			s.State.HeadSeenSHA, s.State.WaitingSince = "2222222", now.Add(-2*time.Hour)
 		}, Waiting, "lint", 0},
 		// Rule 7: a check needs a person.
 		{"cancelled check", func(s *Snapshot) { s.Checks[0].Conclusion = "CANCELLED" }, NeedsHuman, "check test ended cancelled", 0},
@@ -241,8 +241,24 @@ func TestDecideState(t *testing.T) {
 
 	s = readySnapshot()
 	s.State.HeadSeenSHA = "2222222"
-	if got := decide(s).State; got.HeadSeenSHA != head || !got.HeadSeenAt.Equal(now) {
-		t.Errorf("new head: state = %+v, want head seen %s at %v", got, head, now)
+	if got := decide(s).State; got.HeadSeenSHA != head {
+		t.Errorf("new head: state = %+v, want head seen %s", got, head)
+	}
+
+	// Rule 6 times the wait itself, not the head: a push to the base branch makes
+	// GitHub recompute mergeability on heads that are hours old.
+	s = readySnapshot()
+	s.Mergeable = "UNKNOWN"
+	if got := decide(s).State.WaitingSince; !got.Equal(now) {
+		t.Errorf("wait starts: waiting since %v, want %v", got, now)
+	}
+	s.State.WaitingSince = now.Add(-10 * time.Minute)
+	if got := decide(s).State.WaitingSince; !got.Equal(now.Add(-10 * time.Minute)) {
+		t.Errorf("wait goes on: waiting since %v, want it unchanged", got)
+	}
+	s.Mergeable = "MERGEABLE"
+	if got := decide(s).State.WaitingSince; !got.IsZero() {
+		t.Errorf("wait ends: waiting since %v, want zero", got)
 	}
 }
 

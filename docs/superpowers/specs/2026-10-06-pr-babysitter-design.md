@@ -83,8 +83,10 @@ rules in order and stops at the first that matches:
    `action_required` with no jobs, and GraphQL's combined status is `null`.
    That means plan must read check suites to detect it.
 6. A check on the head is pending, or GitHub hasn't yet computed mergeability or
-   checks: **waiting**. After 60 minutes on the same head: **needs-human**,
-   naming the stuck check.
+   checks: **waiting**. After 60 minutes of waiting without a break, on the
+   same head: **needs-human**, naming the stuck check. The clock times the
+   wait, not the head: a push to the base branch makes GitHub recompute
+   mergeability on heads that may be hours old.
 7. A check was cancelled, needs action, or went stale: **needs-human**, naming
    the check.
 8. The last round ended without a push, and no writer has commented, reviewed,
@@ -257,7 +259,8 @@ changes. The comment has three parts:
 
 1. **The state line.** Line 1 is `<!-- babysit-state {...} -->`. Its fields are
    `v`, `label_event`, `owner`, `rounds`, `round_head`, `outcome`,
-   `outcome_at`, `last_push_sha`, `last_push_at`, `head_seen_sha`, and `head_seen_at`. plan
+   `outcome_at`, `last_push_sha`, `last_push_at`, `head_seen_sha`, and
+   `waiting_since`. plan
    reads only this line, only from comments by github-actions[bot] (matched by
    ID), and pages through all of a PR's comments to find it.
 2. **The status.** The state, what the PR is waiting on, and an @mention of the

@@ -21,8 +21,9 @@ it in dry-run mode.
   then the e2e scenarios. Both need Michelle's OK first: a caller on the
   sandbox's main, and any run that spends model budget.
 - **Compactions:** none in the session running Task 9.
-- **Size:** 1,129 of 1,150. Task 8 added 47 lines of Go for apply's outcome
-  recording; the sandbox fix left the count unchanged.
+- **Size:** 1,135 of 1,150. Task 8 added 47 lines of Go for apply's outcome
+  recording; the sandbox fix left the count unchanged, and rule 6's wait
+  clock added 6.
 - **Open, blocking the pilot:**
   - Narrow the federation rule to `workspace:inference` (see "Before Task 0").
 - **Fixed on 2026-10-08:** the runner probe showed agent reaching the network
@@ -589,11 +590,12 @@ second GitHub account or the admin bypass. Use scenario 1 to test what
   itself out; `action.yml` installs `prompt.md`. That dropped three zizmor
   ignores and 17 lines of YAML. Run 37881291291 confirmed the switch end to end
   at 959db53, still with no model calls.
-- **Found, for Michelle:** rule 6 times "60 minutes on the same head", so a
-  push to the base branch, which makes GitHub recompute mergeability, sends
-  every open PR whose head is older than an hour straight to needs-human
-  (PR #2, run 37877293702). Fixing it needs a `waiting_since` field: a spec
-  change and about 4 Go lines.
+- **Found and fixed:** rule 6 timed "60 minutes on the same head", so a push
+  to the base branch, which makes GitHub recompute mergeability, sent every
+  open PR whose head was older than an hour straight to needs-human (PR #2,
+  runs 37877293702 and 37881260341). Michelle chose to time the wait itself:
+  the state line's `head_seen_at` became `waiting_since`, which any other
+  verdict clears.
 - **Still open:** Claude Code through the gateway's header list (spends model
   budget); checkout under `schedule`: no scheduled run started in the first
   2h40m after the caller landed.

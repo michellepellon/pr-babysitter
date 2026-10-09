@@ -130,14 +130,16 @@ func decide(s Snapshot) Decision {
 	}
 	if st.LabelEvent != s.LabelEvent { // a new label: new owner, round count starts over
 		st = State{V: 1, LabelEvent: s.LabelEvent, Owner: s.Labeler.Login, LastPushSHA: st.LastPushSHA,
-			LastPushAt: st.LastPushAt, HeadSeenSHA: st.HeadSeenSHA, HeadSeenAt: st.HeadSeenAt}
+			LastPushAt: st.LastPushAt, HeadSeenSHA: st.HeadSeenSHA, WaitingSince: st.WaitingSince}
 	}
 	if st.Outcome == "running" { // plan runs one at a time, so that round died
 		st.Outcome = "failed: the round didn't finish"
 	}
-	if st.HeadSeenSHA != s.Head {
-		st.HeadSeenSHA, st.HeadSeenAt = s.Head, s.Now
+	if st.HeadSeenSHA != s.Head { // a new head restarts rule 6's clock
+		st.HeadSeenSHA, st.WaitingSince = s.Head, time.Time{}
 	}
+	waitingSince := st.WaitingSince
+	st.WaitingSince = time.Time{} // every verdict but waiting ends the wait
 	verdict := func(k Kind, format string, a ...any) Decision {
 		return Decision{Kind: k, Reason: fmt.Sprintf(format, a...), State: st}
 	}
@@ -155,7 +157,11 @@ func decide(s Snapshot) Decision {
 		return verdict(NeedsHuman, "review the bot's commits, then approve the workflow runs")
 	}
 	if on := waitingOn(s); on != "" {
-		if s.Now.Sub(st.HeadSeenAt) >= stuckAfter {
+		if waitingSince.IsZero() {
+			waitingSince = s.Now
+		}
+		st.WaitingSince = waitingSince
+		if s.Now.Sub(waitingSince) >= stuckAfter {
 			return verdict(NeedsHuman, "stuck for 60 minutes waiting on %s", on)
 		}
 		return verdict(Waiting, "waiting on %s", on)
