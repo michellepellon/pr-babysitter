@@ -587,7 +587,8 @@ second GitHub account or the admin bypass. Use scenario 1 to test what
   caller pinned, in all three jobs (run 37877432266, with a marker file only
   that commit had). `babysit.yml` now uses `uses: $/` and no longer checks
   itself out; `action.yml` installs `prompt.md`. That dropped three zizmor
-  ignores and 17 lines of YAML.
+  ignores and 17 lines of YAML. Run 37881291291 confirmed the switch end to end
+  at 959db53, still with no model calls.
 - **Found, for Michelle:** rule 6 times "60 minutes on the same head", so a
   push to the base branch, which makes GitHub recompute mergeability, sends
   every open PR whose head is older than an hour straight to needs-human
