@@ -103,3 +103,7 @@ Runs 37858608647 and 37858943131 in pr-babysitter-sandbox, branch `probe/local-s
 - Hosted runners (kernel 6.17, systemd 255) have `unshare`, `setpriv`, and `ip netns`, but no `bwrap`. `kernel.apparmor_restrict_unprivileged_userns` is 1.
 - The fix is `sandbox.sh run`: every agent command after setup goes through it, and `e2e/confinement.sh` (check.yml's `sandbox` job) checks it on a runner. A grep for a secret in `/proc/*/cmdline` matches its own command line; write the pattern as `secre[t]`.
 - A step timeout doesn't reach processes started through `sudo`: both of agent's `sleep`s outlived a 1-minute step (run 37861084588). Kill agent's processes in an `if: always()` step.
+
+## e2e notes from Task 9 (2026-10-09)
+
+- The agent won't touch anything that looks protected. To test apply's protected-path check, hide the path from it: the sandbox caller reads `protected_paths` from the repo variable `SANDBOX_PATHS`, and no directory, commit, PR, or comment hints at it. Two paid rounds went to runs where it read the hint and refused.

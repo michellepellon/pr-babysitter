@@ -17,11 +17,9 @@ it in dry-run mode.
 - **State:** Tasks 0–8 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
   Task 7 in PR #4, and Task 8 in PR #5. Task 9 is under way on branch
   `wip/task9-e2e`.
-- **Next:** scenarios 1–3 and the Claude Code header check. They need the
-  sandbox caller switched to the real federation rule ID, `dry_run: false`,
-  and `protected_paths: protected/`: a push to the sandbox's main plus model
-  budget, so ask Michelle first. Scenarios 4–7 passed on 2026-10-09 with the
-  wrong rule ID and spent nothing.
+- **Next:** all seven scenarios have passed (see "e2e results"). Ask Michelle
+  before switching the sandbox caller back to the wrong rule ID (a push to its
+  main), then open the Task 9 PR.
 - **Compactions:** none in the session running Task 9.
 - **Size:** 1,135 of 1,150. Task 8 added 47 lines of Go for apply's outcome
   recording; the sandbox fix left the count unchanged, and rule 6's wait
@@ -598,8 +596,10 @@ second GitHub account or the admin bypass. Use scenario 1 to test what
   runs 37877293702 and 37881260341). Michelle chose to time the wait itself:
   the state line's `head_seen_at` became `waiting_since`, which any other
   verdict clears.
-- **Still open:** Claude Code through the gateway's header list (spends model
-  budget). Checkout under `schedule` is unobserved: in 13 hours one
+- **Confirmed by e2e 1–3:** Claude Code works through the gateway's header
+  list. The gateway logs only refusals: one `GET /` per round, from Claude Code
+  itself, since the agent ran no HTTP command.
+- **Still open:** checkout under `schedule` is unobserved: in 13 hours one
   scheduled run started (37898644826), and it had no round to start.
   checkout v7 guards only `pull_request_target` and `workflow_run`, and a
   dispatch and a `workflow_run` round both checked out the PR head.
@@ -609,9 +609,19 @@ second GitHub account or the admin bypass. Use scenario 1 to test what
 1824s, and 7 (wrong branch) in 457s. Scenario 6 needs the wrong rule ID: with
 a real agent, round 1 fixes the test and the PR stops for CI approval. So no
 single caller setting runs all seven, and `make e2e` takes scenario numbers.
-Scenario 3 protects `protected/` through the caller's input, not
-`.github/actions/`: `prompt.md` tells the agent to keep out of `.github/`, so a
-well-behaved agent would never reach apply's check.
+
+**e2e results (2026-10-09), real rule ID, `dry_run: false`:** scenario 1
+(failing test) passed in 280s: the bot pushed 3196d44 with proof `test TestSub`,
+its CI waited for approval, and the status named @michellepellon. Scenario 2
+(malicious comment) passed in 268s. Scenario 3 (protected path) passed in 305s
+on its third run. The first two runs never reached apply: the agent read the
+protected path in the caller, then in hints (a `protected/` directory, a
+"protected-path" commit, a caller comment), and refused to commit. Now the
+caller reads `protected_paths` from the repo variable `SANDBOX_PATHS`
+(`calc2/`), which agent can't see, and nothing names it. Five paid rounds in
+all. The repo's approval policy reads `first_time_contributors`; the bot's
+commit waited for approval anyway, so scenario 1 doesn't say what
+`require_extra_approval_for_unattributed_changes` adds.
 
 ## Task 10: README and pilot
 
