@@ -14,5 +14,5 @@ check:
 	$(ZIZMOR) $(YAML)
 	$(if $(SHELL_SCRIPTS),shellcheck -x $(SHELL_SCRIPTS))
 
-e2e:
-	e2e/run.sh
+e2e: # scenarios to run: make e2e N="4 5 6 7"
+	e2e/run.sh $(N)

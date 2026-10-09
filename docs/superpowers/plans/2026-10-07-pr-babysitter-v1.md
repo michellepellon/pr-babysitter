@@ -17,9 +17,11 @@ it in dry-run mode.
 - **State:** Tasks 0–8 are merged: Task 1 in PR #2, Tasks 2–6 in PR #3,
   Task 7 in PR #4, and Task 8 in PR #5. Task 9 is under way on branch
   `wip/task9-e2e`.
-- **Next:** the `babysit.yml` runs listed under Task 9's "Runner evidence",
-  then the e2e scenarios. Both need Michelle's OK first: a caller on the
-  sandbox's main, and any run that spends model budget.
+- **Next:** scenarios 1–3 and the Claude Code header check. They need the
+  sandbox caller switched to the real federation rule ID, `dry_run: false`,
+  and `protected_paths: protected/`: a push to the sandbox's main plus model
+  budget, so ask Michelle first. Scenarios 4–7 passed on 2026-10-09 with the
+  wrong rule ID and spent nothing.
 - **Compactions:** none in the session running Task 9.
 - **Size:** 1,135 of 1,150. Task 8 added 47 lines of Go for apply's outcome
   recording; the sandbox fix left the count unchanged, and rule 6's wait
@@ -601,6 +603,15 @@ second GitHub account or the admin bypass. Use scenario 1 to test what
   scheduled run started (37898644826), and it had no round to start.
   checkout v7 guards only `pull_request_target` and `workflow_run`, and a
   dispatch and a `workflow_run` round both checked out the PR head.
+
+**e2e results (2026-10-09), wrong rule ID, no model calls:** scenario 4
+(label removed) passed in 406s, 5 (branch reset) in 415s, 6 (round cap) in
+1824s, and 7 (wrong branch) in 457s. Scenario 6 needs the wrong rule ID: with
+a real agent, round 1 fixes the test and the PR stops for CI approval. So no
+single caller setting runs all seven, and `make e2e` takes scenario numbers.
+Scenario 3 protects `protected/` through the caller's input, not
+`.github/actions/`: `prompt.md` tells the agent to keep out of `.github/`, so a
+well-behaved agent would never reach apply's check.
 
 ## Task 10: README and pilot
 
