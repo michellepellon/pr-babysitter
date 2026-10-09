@@ -43,15 +43,8 @@ jobs:
       head: ${{ steps.plan.outputs.head }}
       branch: ${{ steps.plan.outputs.branch }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: babysitter
-          persist-credentials: false
-      # job.workflow_* names this file's own repo and commit, checked out just above. Not $/:
-      # GitHub doesn't document what it resolves to in a workflow another repo calls.
-      - uses: ./babysitter # zizmor: ignore[self-repository]
+      # $/ is this file's own repo at the commit the caller pinned (runner probe, 2026-10-09).
+      - uses: $/
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -90,15 +83,8 @@ jobs:
             exit 1
           fi
       # Build before the PR is checked out, so nothing from the PR can stand in for our code.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: babysitter
-          persist-credentials: false
-      # job.workflow_* names this file's own repo and commit, checked out just above. Not $/:
-      # GitHub doesn't document what it resolves to in a workflow another repo calls.
-      - uses: ./babysitter # zizmor: ignore[self-repository]
+      # $/ is this file's own repo at the commit the caller pinned (runner probe, 2026-10-09).
+      - uses: $/
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.head }}
@@ -138,7 +124,7 @@ jobs:
           TEST_COMMAND: ${{ inputs.test_command }}
           LINT_COMMAND: ${{ inputs.lint_command }}
         run: |
-          prompt="$(cat "$GITHUB_WORKSPACE/babysitter/prompt.md")
+          prompt="$(cat /usr/local/share/pr-babysitter/prompt.md)
 
           The test command is: ${TEST_COMMAND:-none, so test proofs are unavailable}
           The lint command is: ${LINT_COMMAND:-none, so lint proofs are unavailable}"
@@ -187,15 +173,8 @@ jobs:
       checks: read
       statuses: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: babysitter
-          persist-credentials: false
-      # job.workflow_* names this file's own repo and commit, checked out just above. Not $/:
-      # GitHub doesn't document what it resolves to in a workflow another repo calls.
-      - uses: ./babysitter # zizmor: ignore[self-repository]
+      # $/ is this file's own repo at the commit the caller pinned (runner probe, 2026-10-09).
+      - uses: $/
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: repo

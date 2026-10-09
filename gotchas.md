@@ -84,8 +84,10 @@ Evidence and run links: `docs/superpowers/plans/2026-10-07-task0-findings.md`.
 
 ## Build notes from Task 8 (2026-10-08)
 
+- A spec rule that times "60 minutes on the same head" fires at once on an old head when a push to the base branch makes GitHub recompute mergeability.
+- Scheduled runs may not start for hours after a schedule is added: none ran in the sandbox's first 2h40m with an hourly cron.
 - `cache-mode: none` goes at the top of a workflow or in a job; a job's value wins. A called workflow can't get more cache access than its caller grants, so the caller sets it too. actionlint 1.7.12 doesn't know the key yet; zizmor 1.30.1 does.
-- A reusable workflow can't pin its own SHA. `job.workflow_repository` and `job.workflow_sha` name the repo and commit of the file that defines the job; check those out to run our own action. GitHub's `$/` syntax doesn't document what it resolves to in a workflow another repo calls.
+- A reusable workflow can't pin its own SHA, but `uses: $/` runs an action from the called workflow's own repo at the commit the caller pinned, in every job (runner probe 2026-10-09, run 37877432266). `job.workflow_repository` and `job.workflow_sha` name the same repo and commit.
 - `actions/checkout` v7 refuses fork PR code under `pull_request_target` and `workflow_run` unless `allow-unsafe-pr-checkout: true`. We skip forks, so we never set it.
 - Every user can read every process's command line under `/proc`. Pass secrets to `sudo -u` with `--preserve-env=NAME,...`, never as `env NAME=value` arguments: sudo stays alive as the parent with its arguments visible.
 - `gh auth setup-git` works with only `GH_TOKEN` set (no `gh auth login`), so apply can push after a `persist-credentials: false` checkout.

@@ -583,9 +583,19 @@ second GitHub account or the admin bypass. Use scenario 1 to test what
     `checks: read` and `statuses: read` (sandbox run 37865301031). The
     sandbox is public, though, and public repos show checks to any token, so
     this says nothing about private pilot repos. Keep both permissions.
+- **`$/` in a called workflow** resolves to pr-babysitter at the commit the
+  caller pinned, in all three jobs (run 37877432266, with a marker file only
+  that commit had). `babysit.yml` now uses `uses: $/` and no longer checks
+  itself out; `action.yml` installs `prompt.md`. That dropped three zizmor
+  ignores and 17 lines of YAML.
+- **Found, for Michelle:** rule 6 times "60 minutes on the same head", so a
+  push to the base branch, which makes GitHub recompute mergeability, sends
+  every open PR whose head is older than an hour straight to needs-human
+  (PR #2, run 37877293702). Fixing it needs a `waiting_since` field: a spec
+  change and about 4 Go lines.
 - **Still open:** Claude Code through the gateway's header list (spends model
-  budget); what `$/` resolves to in a called workflow; checkout under
-  `schedule`, which the hourly run will show.
+  budget); checkout under `schedule`: no scheduled run started in the first
+  2h40m after the caller landed.
 
 ## Task 10: README and pilot
 

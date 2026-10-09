@@ -1,5 +1,5 @@
-# ABOUTME: Composite action that builds pr-babysitter from this action's own commit and installs it and sandbox.sh on PATH.
-# ABOUTME: babysit.yml checks this repo out at its own workflow SHA, runs this, then calls pr-babysitter in steps.
+# ABOUTME: Composite action that builds pr-babysitter from this action's own commit and installs it, sandbox.sh, and prompt.md.
+# ABOUTME: babysit.yml runs it as `uses: $/`, at the commit the caller pinned, then calls pr-babysitter in steps.
 
 name: pr-babysitter
 description: Build pr-babysitter and install it as /usr/local/bin/pr-babysitter, where the gateway user can run it, with sandbox.sh as pr-babysitter-sandbox.
@@ -15,3 +15,4 @@ runs:
         go build -C "$GITHUB_ACTION_PATH" -o "$RUNNER_TEMP/pr-babysitter" .
         sudo install -m 755 "$RUNNER_TEMP/pr-babysitter" /usr/local/bin/pr-babysitter
         sudo install -m 755 "$GITHUB_ACTION_PATH/sandbox.sh" /usr/local/bin/pr-babysitter-sandbox
+        sudo install -D -m 644 "$GITHUB_ACTION_PATH/prompt.md" /usr/local/share/pr-babysitter/prompt.md
