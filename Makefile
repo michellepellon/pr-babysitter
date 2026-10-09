@@ -12,7 +12,7 @@ check:
 	go vet ./...
 	go test ./...
 	$(ZIZMOR) $(YAML)
-	$(if $(SHELL_SCRIPTS),shellcheck $(SHELL_SCRIPTS))
+	$(if $(SHELL_SCRIPTS),shellcheck -x $(SHELL_SCRIPTS))
 
 e2e:
 	e2e/run.sh
